@@ -45,7 +45,7 @@ export class AdminSep10Service extends Sep10Service {
     );
 
     // Extract the client public key from the transaction
-    const transaction = require("stellar-sdk").TransactionBuilder.fromXDR(
+    const transaction = require("@stellar/stellar-sdk").TransactionBuilder.fromXDR(
       transactionXDR,
       this.config.networkPassphrase,
     ) as any;

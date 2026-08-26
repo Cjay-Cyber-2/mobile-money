@@ -7,7 +7,7 @@ import {
   isValidTransition,
 } from "../stellar/sep31";
 import { getStellarServer, getNetworkPassphrase } from "../config/stellar";
-import * as StellarSdk from "stellar-sdk";
+import * as StellarSdk from "@stellar/stellar-sdk";
 import { getConfiguredPaymentAsset } from "../services/stellar/assetService";
 
 /**

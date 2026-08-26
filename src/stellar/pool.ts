@@ -24,7 +24,7 @@ import logger from "../utils/logger";
  * - Stale lock and disabled account recovery
  */
 
-import * as StellarSdk from "stellar-sdk";
+import * as StellarSdk from "@stellar/stellar-sdk";
 import { getStellarServer, getNetworkPassphrase } from "../config/stellar";
 import {
   ChannelAccountModel,

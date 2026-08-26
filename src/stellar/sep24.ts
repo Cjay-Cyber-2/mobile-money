@@ -2,7 +2,7 @@ import logger from "../utils/logger";
 import { Router, Request, Response } from "express";
 import { sep24RateLimiter } from "../middleware/rateLimit";
 import { v4 as uuidv4 } from "uuid";
-import { Transaction, Keypair, StrKey } from "stellar-sdk";
+import { Transaction, Keypair, StrKey } from "@stellar/stellar-sdk";
 import {
   getStellarServer,
   getNetworkPassphrase,

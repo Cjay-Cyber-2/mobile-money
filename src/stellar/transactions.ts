@@ -7,7 +7,7 @@ import {
   StrKey,
   Transaction,
   TransactionBuilder,
-} from "stellar-sdk";
+} from "@stellar/stellar-sdk";
 import {
   getFeeBumpConfig,
   getNetworkPassphrase,
@@ -169,7 +169,7 @@ export const buildTransactionWithFeeBump = async (
   if (!enableFeeBump) {
     return {
       envelope: innerTransaction.toEnvelope().toXDR("base64"),
-      innerTransactionHash: innerTransaction.hash().toString("hex"),
+      innerTransactionHash: Buffer.from(innerTransaction.hash()).toString("hex"),
       feeBumpTransactionHash: "",
       fee: Number(innerTransaction.fee),
       usedFeeBump: false,
@@ -190,8 +190,8 @@ export const buildTransactionWithFeeBump = async (
 
   return {
     envelope: feeBumpTransaction.toEnvelope().toXDR("base64"),
-    innerTransactionHash: innerTransaction.hash().toString("hex"),
-    feeBumpTransactionHash: feeBumpTransaction.hash().toString("hex"),
+    innerTransactionHash: Buffer.from(innerTransaction.hash()).toString("hex"),
+    feeBumpTransactionHash: Buffer.from(feeBumpTransaction.hash()).toString("hex"),
     fee: Number(feeBumpTransaction.fee),
     usedFeeBump: true,
   };

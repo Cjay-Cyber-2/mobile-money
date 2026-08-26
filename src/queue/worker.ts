@@ -362,7 +362,7 @@ async function processTransaction(
     // Use high-throughput pool service when available; falls back to single-account mode
     const issuerSecret = process.env.STELLAR_ISSUER_SECRET?.trim();
     if (highThroughputService.isServiceInitialized() && issuerSecret) {
-      const issuerKp = require("stellar-sdk").Keypair.fromSecret(issuerSecret);
+      const issuerKp = require("@stellar/stellar-sdk").Keypair.fromSecret(issuerSecret);
       return highThroughputService
         .submitPayment({
           sourceAccount: issuerKp.publicKey(),
@@ -440,7 +440,7 @@ async function processTransaction(
         const issuerSecret = process.env.STELLAR_ISSUER_SECRET?.trim();
         if (highThroughputService.isServiceInitialized() && issuerSecret) {
           const issuerKp =
-            require("stellar-sdk").Keypair.fromSecret(issuerSecret);
+            require("@stellar/stellar-sdk").Keypair.fromSecret(issuerSecret);
           return highThroughputService.submitPayment({
             sourceAccount: issuerKp.publicKey(),
             sourceSecret: issuerSecret,

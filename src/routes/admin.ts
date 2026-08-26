@@ -1,7 +1,7 @@
 import logger, { getTelecomAverageMetrics } from "../utils/logger";
 
 import { Router, Request, Response, NextFunction } from "express";
-import * as StellarSdk from "stellar-sdk";
+import * as StellarSdk from "@stellar/stellar-sdk";
 import { generateToken } from "../auth/jwt";
 import {
   updateAdminNotesHandler,

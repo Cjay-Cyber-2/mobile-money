@@ -1,4 +1,4 @@
-import { Keypair } from "stellar-sdk";
+import { Keypair } from "@stellar/stellar-sdk";
 import request from "supertest";
 import crypto from "crypto";
 

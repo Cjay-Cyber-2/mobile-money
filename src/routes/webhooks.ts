@@ -1,7 +1,7 @@
 import logger from "../utils/logger";
 import { Router, Request, Response } from "express";
 import { createHmac, timingSafeEqual, verify, createPublicKey } from "crypto";
-import { Keypair } from "stellar-sdk";
+import { Keypair } from "@stellar/stellar-sdk";
 import { TransactionModel, TransactionStatus } from "../models/transaction";
 import { WebhookService, WebhookEvent } from "../services/webhook";
 import { ingestRateLimiter } from "../middleware/ingestRateLimit";
