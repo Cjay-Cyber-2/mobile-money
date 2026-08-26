@@ -1,12 +1,14 @@
 process.env.NODE_ENV = "test";
-process.env.DATABASE_URL ??= "postgresql://test_user:test_password@localhost:5432/test_db";
+process.env.DATABASE_URL ??=
+  "postgresql://test_user:test_password@localhost:5432/test_db";
 process.env.REDIS_URL ??= "redis://localhost:6379";
 process.env.STELLAR_ISSUER_SECRET ??=
   "SDUHELR2QJTQH24GZKNCT5NBWJ2FCGMPRGKED5Y4REUZK4XCM73JMM4V";
 process.env.JWT_SECRET ??= "test-jwt-secret";
 process.env.ADMIN_API_KEY ??= "test-admin-key";
 process.env.DB_ENCRYPTION_KEY ??= "development-encryption-key-32-chars-long";
-process.env.KEY_VAULT_MASTER_SECRET ??= "test-key-vault-master-secret-32-chars-long";
+process.env.KEY_VAULT_MASTER_SECRET ??=
+  "test-key-vault-master-secret-32-chars-long";
 process.env.GEOLOCATION_API_KEY ??= "";
 
 // Global mock for axios to prevent real HTTP requests to sanction lists
@@ -16,7 +18,9 @@ jest.mock("axios", () => {
     ...originalAxios,
     create: jest.fn((...args: any[]) => originalAxios.create(...args)),
     get: jest.fn((url: string, config?: any) => {
-      if (url === "https://scsanctions.un.org/resources/xml/en/consolidated.xml") {
+      if (
+        url === "https://scsanctions.un.org/resources/xml/en/consolidated.xml"
+      ) {
         return Promise.resolve({
           data: `
             <CONSOLIDATED_LIST>
@@ -47,31 +51,51 @@ jest.mock("axios", () => {
         });
       }
       // Fallback to original or error for unhandled external URLs in tests
-      if (url.startsWith("http") && !url.includes("127.0.0.1") && !url.includes("localhost")) {
+      if (
+        url.startsWith("http") &&
+        !url.includes("127.0.0.1") &&
+        !url.includes("localhost")
+      ) {
         return Promise.reject(new Error(`Unmocked external request to ${url}`));
       }
       return originalAxios.get(url, config);
     }),
     post: jest.fn((url: string, data?: any, config?: any) => {
-      if (url.startsWith("http") && !url.includes("127.0.0.1") && !url.includes("localhost")) {
+      if (
+        url.startsWith("http") &&
+        !url.includes("127.0.0.1") &&
+        !url.includes("localhost")
+      ) {
         return Promise.reject(new Error(`Unmocked external request to ${url}`));
       }
       return originalAxios.post(url, data, config);
     }),
     put: jest.fn((url: string, data?: any, config?: any) => {
-      if (url.startsWith("http") && !url.includes("127.0.0.1") && !url.includes("localhost")) {
+      if (
+        url.startsWith("http") &&
+        !url.includes("127.0.0.1") &&
+        !url.includes("localhost")
+      ) {
         return Promise.reject(new Error(`Unmocked external request to ${url}`));
       }
       return originalAxios.put(url, data, config);
     }),
     delete: jest.fn((url: string, config?: any) => {
-      if (url.startsWith("http") && !url.includes("127.0.0.1") && !url.includes("localhost")) {
+      if (
+        url.startsWith("http") &&
+        !url.includes("127.0.0.1") &&
+        !url.includes("localhost")
+      ) {
         return Promise.reject(new Error(`Unmocked external request to ${url}`));
       }
       return originalAxios.delete(url, config);
     }),
     patch: jest.fn((url: string, data?: any, config?: any) => {
-      if (url.startsWith("http") && !url.includes("127.0.0.1") && !url.includes("localhost")) {
+      if (
+        url.startsWith("http") &&
+        !url.includes("127.0.0.1") &&
+        !url.includes("localhost")
+      ) {
         return Promise.reject(new Error(`Unmocked external request to ${url}`));
       }
       return originalAxios.patch(url, data, config);
@@ -99,6 +123,12 @@ try {
   console.error("Failed to patch Express for async errors in tests:", e);
 }
 
+jest.mock("../src/config/redis", () => ({
+  connectRedis: jest.fn().mockResolvedValue(undefined),
+  disconnectRedis: jest.fn().mockResolvedValue(undefined),
+  redisClient: { on: jest.fn(), get: jest.fn(), set: jest.fn() }
+}));
+
 import { connectRedis, disconnectRedis } from "../src/config/redis";
 
 beforeAll(async () => {
@@ -108,5 +138,3 @@ beforeAll(async () => {
 afterAll(async () => {
   await disconnectRedis();
 });
-
-
