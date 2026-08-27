@@ -10,14 +10,19 @@ module.exports = {
       setupFiles: ["<rootDir>/tests/jest.setup.ts"],
       roots: ["<rootDir>/src", "<rootDir>/tests"],
       testMatch: ["**/__tests__/**/*.ts", "**/?(*.)+(spec|test).ts"],
-      // Exclude the frontend JS tests from this project
+      // Exclude frontend JS, Playwright E2E, and Pact tests from backend Jest run
       testPathIgnorePatterns: [
         "/node_modules/",
         "<rootDir>/src/tests/frontend/",
+        "<rootDir>/tests/e2e/",
+        "<rootDir>/tests/pact/",
       ],
       transform: {
-        "^.+\\.ts$": ["ts-jest", { diagnostics: false }],
+        "^.+\\.[jt]sx?$": ["ts-jest", { diagnostics: false }],
       },
+      transformIgnorePatterns: [
+        "/node_modules/(?!(uint8array-extras)/)",
+      ],
       moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json", "node"],
       // Mirrors the (otherwise-dead, since `projects` doesn't inherit
       // top-level options) mapper below — lets `jest.mock("../foo.js")`
@@ -28,15 +33,14 @@ module.exports = {
     },
     {
       displayName: "frontend",
-      // No preset — plain JS, no TypeScript compilation needed
       testEnvironment: "jsdom",
       setupFiles: ["<rootDir>/tests/jest.setup.ts"],
       roots: ["<rootDir>/src/tests/frontend"],
       testMatch: ["**/?(*.)+(spec|test).js"],
-      // The calculator module is plain CommonJS — no transpilation required.
-      // An empty transform map tells Jest to load JS files as-is via Node.
-      transform: {},
-      moduleFileExtensions: ["js", "json", "node"],
+      transform: {
+        "^.+\\.[jt]s$": ["ts-jest", { diagnostics: false }],
+      },
+      moduleFileExtensions: ["js", "ts", "json", "node"],
     },
   ],
   // Coverage collected from both projects
