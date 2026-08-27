@@ -6,7 +6,7 @@
   "scripts": {
     "momo-cli": "tsx src/scripts/momo-cli.ts",
     "momo:fund": "tsx src/scripts/autoFundDev.ts",
-    "prepare": "husky",
+    "prepare": "husky || true",
     "audit:high": "npm audit --audit-level=high",
     "snyk:test:high": "snyk test --severity-threshold=high",
     "security:scan": "tsx scripts/security-scan.ts",
