@@ -80,15 +80,6 @@ jest.mock("../../middleware/auth", () => ({
   },
 }));
 
-// Mock spdy to prevent http_parser legacy import issue inside modern Node.js environments
-jest.mock("spdy", () => ({
-  createServer: jest.fn().mockReturnValue({
-    listen: jest.fn((port: any, cb: any) => {
-      if (cb) cb();
-    }),
-  }),
-}));
-
 // Mock Redis & PubSub to prevent connections during tests
 // Mock Redis & PubSub to prevent connections during tests
 jest.mock("../../config/redis", () => ({

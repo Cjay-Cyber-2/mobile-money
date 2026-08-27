@@ -77,15 +77,6 @@ jest.mock("../middleware/auth", () => ({
   },
 }));
 
-// Mock spdy to prevent http_parser legacy import issue inside modern Node.js environments
-jest.mock("spdy", () => ({
-  createServer: jest.fn<any>().mockReturnValue({
-    listen: jest.fn<any>((port: any, cb: any) => {
-      if (cb) cb();
-    }),
-  }),
-}));
-
 // Mock MobileMoneyService to avoid loading legacy JS files during tests
 jest.mock("../services/mobilemoney/mobileMoneyService", () => ({
   MobileMoneyService: jest.fn<any>().mockImplementation(() => ({
