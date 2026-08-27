@@ -41,6 +41,7 @@ export type KnownProvider =
   | "orange"
   | "orange_madagascar"
   | "orange_guinea"
+  | "wave_senegal"
   | "sms_portal";
 
 export interface OutageRecord {
@@ -70,6 +71,8 @@ const PROVIDER_FALLBACK_MAP: Record<KnownProvider, KnownProvider[]> = {
   orange: ["mtn", "airtel", "sms_portal"],
   orange_madagascar: ["orange", "sms_portal"],
   orange_guinea: ["orange", "sms_portal"],
+  // Senegal (XOF): Wave first, then Orange Money Senegal, then SMS portal.
+  wave_senegal: ["orange", "sms_portal"],
   sms_portal: [],
 };
 
