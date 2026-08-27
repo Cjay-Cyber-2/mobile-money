@@ -230,6 +230,205 @@ const paginate = <T>(data: T[], page: number, limit: number) => {
 
 /**
  * =========================
+ * DYNAMIC SYSTEM CONFIGURATION
+ * =========================
+ */
+
+router.get(
+  "/config",
+  requireAdmin,
+  logAdminAction("LIST_SYSTEM_CONFIG"),
+  async (req: Request, res: Response) => {
+    try {
+      const category = req.query.category as string | undefined;
+      const { systemConfigService } = await import(
+        "../services/systemConfigService"
+      );
+      const configs = await systemConfigService.getAll(category);
+
+      res.json({
+        success: true,
+        configs,
+        total: configs.length,
+      });
+    } catch (err) {
+      logger.error("Error listing system config:", err);
+      throw createError(ERROR_CODES.INTERNAL_ERROR, "Failed to list system configuration");
+    }
+  },
+);
+
+router.get(
+  "/config/:key",
+  requireAdmin,
+  logAdminAction("GET_SYSTEM_CONFIG"),
+  async (req: Request, res: Response) => {
+    try {
+      const { systemConfigService } = await import(
+        "../services/systemConfigService"
+      );
+      const entry = await systemConfigService.get(req.params.key);
+
+      if (!entry) {
+        throw createError(ERROR_CODES.NOT_FOUND, `Config key '${req.params.key}' not found`);
+      }
+
+      res.json({ success: true, config: entry });
+    } catch (err) {
+      if ((err as any).statusCode) throw err;
+      logger.error("Error fetching system config:", err);
+      throw createError(ERROR_CODES.INTERNAL_ERROR, "Failed to fetch system configuration");
+    }
+  },
+);
+
+router.put(
+  "/config",
+  requireAdmin,
+  logAdminAction("UPSERT_SYSTEM_CONFIG"),
+  async (req: Request, res: Response) => {
+    try {
+      const adminUser = (req as AuthRequest).user;
+      if (!adminUser) {
+        throw createError(ERROR_CODES.UNAUTHORIZED, "Authentication required");
+      }
+
+      const { key, value, category, description, value_type } = req.body;
+
+      if (!key || typeof key !== "string" || key.trim().length === 0) {
+        throw createError(ERROR_CODES.INVALID_INPUT, "key is required and must be a non-empty string");
+      }
+      if (value === undefined || value === null) {
+        throw createError(ERROR_CODES.INVALID_INPUT, "value is required");
+      }
+
+      const validTypes = ["string", "number", "boolean", "json"];
+      if (value_type && !validTypes.includes(value_type)) {
+        throw createError(
+          ERROR_CODES.INVALID_INPUT,
+          `value_type must be one of: ${validTypes.join(", ")}`,
+        );
+      }
+
+      const { systemConfigService } = await import(
+        "../services/systemConfigService"
+      );
+      const entry = await systemConfigService.upsert({
+        key: key.trim(),
+        value: String(value),
+        category,
+        description,
+        value_type,
+        updated_by: adminUser.id,
+      });
+
+      res.json({
+        success: true,
+        message: `Config '${key}' updated`,
+        config: entry,
+      });
+    } catch (err) {
+      if ((err as any).statusCode) throw err;
+      logger.error("Error upserting system config:", err);
+      throw createError(ERROR_CODES.INTERNAL_ERROR, "Failed to update system configuration");
+    }
+  },
+);
+
+router.delete(
+  "/config/:key",
+  requireAdmin,
+  logAdminAction("DELETE_SYSTEM_CONFIG"),
+  async (req: Request, res: Response) => {
+    try {
+      const adminUser = (req as AuthRequest).user;
+      if (!adminUser) {
+        throw createError(ERROR_CODES.UNAUTHORIZED, "Authentication required");
+      }
+
+      const { systemConfigService } = await import(
+        "../services/systemConfigService"
+      );
+      const deleted = await systemConfigService.delete(req.params.key);
+
+      if (!deleted) {
+        throw createError(ERROR_CODES.NOT_FOUND, `Config key '${req.params.key}' not found`);
+      }
+
+      res.json({
+        success: true,
+        message: `Config '${req.params.key}' deleted`,
+      });
+    } catch (err) {
+      if ((err as any).statusCode) throw err;
+      logger.error("Error deleting system config:", err);
+      throw createError(ERROR_CODES.INTERNAL_ERROR, "Failed to delete system configuration");
+    }
+  },
+);
+
+router.patch(
+  "/config/bulk",
+  requireAdmin,
+  logAdminAction("BULK_UPDATE_SYSTEM_CONFIG"),
+  async (req: Request, res: Response) => {
+    try {
+      const adminUser = (req as AuthRequest).user;
+      if (!adminUser) {
+        throw createError(ERROR_CODES.UNAUTHORIZED, "Authentication required");
+      }
+
+      const { configs } = req.body;
+
+      if (!Array.isArray(configs) || configs.length === 0) {
+        throw createError(
+          ERROR_CODES.INVALID_INPUT,
+          "configs must be a non-empty array of { key, value } objects",
+        );
+      }
+
+      if (configs.length > 50) {
+        throw createError(ERROR_CODES.LIMIT_EXCEEDED, "Maximum 50 configs per bulk update");
+      }
+
+      for (const c of configs) {
+        if (!c.key || typeof c.key !== "string") {
+          throw createError(ERROR_CODES.INVALID_INPUT, "Each config must have a string 'key'");
+        }
+        if (c.value === undefined || c.value === null) {
+          throw createError(ERROR_CODES.INVALID_INPUT, `Config '${c.key}' must have a 'value'`);
+        }
+      }
+
+      const { systemConfigService } = await import(
+        "../services/systemConfigService"
+      );
+      const results = await systemConfigService.bulkUpsert(
+        configs.map((c: any) => ({
+          key: c.key.trim(),
+          value: String(c.value),
+          category: c.category,
+          description: c.description,
+          value_type: c.value_type,
+          updated_by: adminUser.id,
+        })),
+      );
+
+      res.json({
+        success: true,
+        message: `Bulk upserted ${results.length} configs`,
+        configs: results,
+      });
+    } catch (err) {
+      if ((err as any).statusCode) throw err;
+      logger.error("Error bulk upserting system config:", err);
+      throw createError(ERROR_CODES.INTERNAL_ERROR, "Failed to bulk update system configuration");
+    }
+  },
+);
+
+/**
+ * =========================
  * METRICS
  * =========================
  */
