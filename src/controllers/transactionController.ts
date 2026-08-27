@@ -40,7 +40,6 @@ import { ERROR_CODES } from "../constants/errorCodes";
 import { travelRuleService } from "../compliance/travelRule";
 import { createError } from "../middleware/errorHandler";
 import { sep08Service } from "../services/compliance/sep08";
-import { enforceKycCheck } from "../middleware/kycCheck";
 
 const IDEMPOTENCY_TTL_HOURS = Number(
   process.env.IDEMPOTENCY_KEY_TTL_HOURS || 24,
@@ -672,11 +671,10 @@ async function processTransactionRequest(
       return res.status(400).json({ error: providerLimitCheck.error });
     }
 
-    const kycOutcome = await enforceKycCheck(req, res);
-    if (!kycOutcome.allowed) {
-      return res;
+    const userId = req.jwtUser?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
     }
-    const { userId } = kycOutcome;
 
     // Check mandatory 2FA for withdrawals
     if (type === "withdraw") {
