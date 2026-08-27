@@ -101,8 +101,16 @@ function getFeePayerKeypair(): Keypair {
 
 async function getTransactionBaseFee(): Promise<number> {
   const server = getStellarServer();
-  const fetchedBaseFee = await server.fetchBaseFee();
-  return getConfiguredBaseFee(Number(fetchedBaseFee));
+  try {
+    const feeStats = await server.feeStats();
+    const dynamicBaseFee = Number(
+      feeStats.fee_charged?.p90 || feeStats.last_ledger_base_fee || 100
+    );
+    return getConfiguredBaseFee(dynamicBaseFee);
+  } catch (error) {
+    const fetchedBaseFee = await server.fetchBaseFee();
+    return getConfiguredBaseFee(Number(fetchedBaseFee));
+  }
 }
 
 async function buildInnerTransaction(
