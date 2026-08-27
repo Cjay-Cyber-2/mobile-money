@@ -3,9 +3,12 @@ import express, { Express } from "express";
 import { Pool } from "pg";
 import { createSep12Router, Sep12CustomerStatus } from "../sep12";
 import KYCService, { KYCLevel, KYCStatus } from "../../services/kyc";
+import { UserModel } from "../../models/users";
+import { errorHandler } from "../../middleware/errorHandler";
 
-// Mock KYC Service
+// Mock KYC Service & UserModel
 jest.mock("../../services/kyc");
+jest.mock("../../models/users");
 
 describe("SEP-12 KYC API", () => {
   let app: Express;
@@ -13,6 +16,13 @@ describe("SEP-12 KYC API", () => {
   let mockKycService: jest.Mocked<KYCService>;
 
   beforeEach(() => {
+    (UserModel as jest.MockedClass<typeof UserModel>).mockImplementation(
+      () =>
+        ({
+          updateSensitiveData: jest.fn().mockResolvedValue(undefined),
+        }) as any,
+    );
+
     // Create mock database
     mockDb = {
       query: jest.fn(),
@@ -34,6 +44,7 @@ describe("SEP-12 KYC API", () => {
     app = express();
     app.use(express.json());
     app.use("/sep12", createSep12Router(mockDb));
+    app.use(errorHandler);
   });
 
   afterEach(() => {
