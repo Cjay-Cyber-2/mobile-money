@@ -9,7 +9,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install ALL dependencies (including devDependencies) required for building
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 # Copy source (build context is trimmed by .dockerignore)
 COPY . .
