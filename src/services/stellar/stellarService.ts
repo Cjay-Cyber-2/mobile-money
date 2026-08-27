@@ -99,12 +99,14 @@ export class StellarService {
     }
 
     try {
+      let timeoutId: NodeJS.Timeout;
       const callPromise = this.server.fetchBaseFee();
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Horizon ping timeout")), timeoutMs),
-      );
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error("Horizon ping timeout")), timeoutMs);
+      });
 
       await Promise.race([callPromise, timeoutPromise]);
+      clearTimeout(timeoutId!);
     } catch (err) {
       console.error(
         "Horizon server unreachable:",
