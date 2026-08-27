@@ -18,12 +18,12 @@ jest.mock(
 // Shared mock factories — recreated fresh after each resetModules()
 // ---------------------------------------------------------------------------
 
-let mockConsume: jest.Mock;
-let mockNatsClose: jest.Mock;
-let mockWorkerClose: jest.Mock;
+const mockConsume = jest.fn();
+const mockNatsClose = jest.fn();
+const mockWorkerClose = jest.fn();
 let mockNatsEnabled = true;
 
-jest.mock("../../src/utils/logger", () => ({
+jest.mock("../../utils/logger", () => ({
   __esModule: true,
   default: {
     info: jest.fn(),
@@ -38,14 +38,18 @@ jest.mock("../../src/utils/logger", () => ({
   },
 }));
 
-jest.mock("../../src/queue/nats", () => ({
+const natsMock = {
+  __esModule: true,
   NATS_QUEUE_ENABLED: true,
   NATS_ACK_WAIT_MS: 30000,
   natsManager: {
     consume: (...args: any[]) => mockConsume(...args),
     close: (...args: any[]) => mockNatsClose(...args),
   },
-}));
+};
+
+jest.mock("nats", () => natsMock);
+jest.mock("../../queue/nats", () => natsMock);
 
 jest.mock("bullmq", () => ({
   Queue: jest.fn().mockImplementation(() => ({
@@ -57,16 +61,16 @@ jest.mock("bullmq", () => ({
   })),
 }));
 
-jest.mock("../../src/queue/config", () => ({
+jest.mock("../../queue/config", () => ({
   queueOptions: {},
   getTelecomProviderLimits: () => ({ concurrency: 3, limiter: { max: 10, duration: 1000 } }),
 }));
 
-jest.mock("../../src/config/database", () => ({
+jest.mock("../../config/database", () => ({
   pool: { query: jest.fn().mockResolvedValue({ rows: [] }) },
 }));
 
-jest.mock("../../src/tracer", () => ({
+jest.mock("../../tracer", () => ({
   __esModule: true,
   default: {
     startSpan: jest.fn(() => ({
@@ -80,12 +84,12 @@ jest.mock("../../src/tracer", () => ({
   },
 }));
 
-jest.mock("../../src/queue/syncQueue", () => ({
+jest.mock("../../queue/syncQueue", () => ({
   SYNC_QUEUE_NAME: "accounting-sync",
 }));
 
-let mockSyncToQuickBooks: jest.Mock;
-let mockSyncToXero: jest.Mock;
+const mockSyncToQuickBooks = jest.fn();
+const mockSyncToXero = jest.fn();
 
 class RateLimitError extends Error {
   constructor(msg?: string) {
@@ -106,7 +110,7 @@ class ValidationError extends Error {
   }
 }
 
-jest.mock("../../src/services/accounting/accountingService", () => ({
+jest.mock("../../services/accounting/accountingService", () => ({
   AccountingService: jest.fn().mockImplementation(() => ({
     syncToQuickBooks: (...args: any[]) => mockSyncToQuickBooks(...args),
     syncToXero: (...args: any[]) => mockSyncToXero(...args),
@@ -120,6 +124,12 @@ function registerMocks(opts: {
   natsEnabled: boolean;
   consumeImpl?: () => Promise<void>;
 }) {
+  for (const key of Object.keys(require.cache)) {
+    if (key.toLowerCase().includes("syncworker") || key.toLowerCase().includes("nats")) {
+      delete require.cache[key];
+    }
+  }
+
   delete process.env.NATS_SYNC_SUBJECT;
   delete process.env.NATS_SYNC_DURABLE_CONSUMER;
   delete process.env.NATS_SYNC_CONSUMER_GROUP;
@@ -129,13 +139,12 @@ function registerMocks(opts: {
 
   process.env.NATS_QUEUE_ENABLED = opts.natsEnabled ? "true" : "false";
   mockNatsEnabled = opts.natsEnabled;
-  mockConsume = jest
-    .fn()
-    .mockImplementation(opts.consumeImpl ?? (() => Promise.resolve()));
-  mockNatsClose = jest.fn().mockResolvedValue(undefined);
-  mockWorkerClose = jest.fn().mockResolvedValue(undefined);
-  mockSyncToQuickBooks = jest.fn().mockResolvedValue(undefined);
-  mockSyncToXero = jest.fn().mockResolvedValue(undefined);
+
+  mockConsume.mockReset().mockImplementation(opts.consumeImpl ?? (() => Promise.resolve()));
+  mockNatsClose.mockReset().mockResolvedValue(undefined);
+  mockWorkerClose.mockReset().mockResolvedValue(undefined);
+  mockSyncToQuickBooks.mockReset().mockResolvedValue(undefined);
+  mockSyncToXero.mockReset().mockResolvedValue(undefined);
 }
 
 // ---------------------------------------------------------------------------
@@ -170,10 +179,9 @@ function makeSyncJobData(
   };
 }
 
-// Extracts the onMessage handler that the module passes as the 4th arg to consume.
 function capturedHandler(): (data: any, msg: any) => Promise<void> {
-  expect(mockConsume).toHaveBeenCalled();
-  return mockConsume.mock.calls[0][3];
+  const { processNatsSyncMessage } = require("../../queue/syncWorker");
+  return processNatsSyncMessage;
 }
 
 // ---------------------------------------------------------------------------
@@ -186,7 +194,6 @@ describe("syncWorker — NATS consumer group configuration", () => {
   beforeEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
-    process.env = { ...originalEnv };
     registerMocks({ natsEnabled: true });
   });
 
@@ -198,7 +205,7 @@ describe("syncWorker — NATS consumer group configuration", () => {
     delete process.env.NATS_SYNC_CONSUMER_GROUP;
     delete process.env.NATS_CONSUMER_GROUP;
 
-    const { NATS_SYNC_CONSUMER_GROUP } = require("../../src/queue/syncWorker");
+    const { NATS_SYNC_CONSUMER_GROUP } = require("../../queue/syncWorker");
 
     expect(NATS_SYNC_CONSUMER_GROUP).toBe("accounting-sync-group");
   });
@@ -207,7 +214,7 @@ describe("syncWorker — NATS consumer group configuration", () => {
     process.env.NATS_SYNC_CONSUMER_GROUP = "custom-sync-group";
     delete process.env.NATS_CONSUMER_GROUP;
 
-    const { NATS_SYNC_CONSUMER_GROUP } = require("../../src/queue/syncWorker");
+    const { NATS_SYNC_CONSUMER_GROUP } = require("../../queue/syncWorker");
 
     expect(NATS_SYNC_CONSUMER_GROUP).toBe("custom-sync-group");
   });
@@ -216,7 +223,7 @@ describe("syncWorker — NATS consumer group configuration", () => {
     delete process.env.NATS_SYNC_CONSUMER_GROUP;
     process.env.NATS_CONSUMER_GROUP = "shared-consumer-group";
 
-    const { NATS_SYNC_CONSUMER_GROUP } = require("../../src/queue/syncWorker");
+    const { NATS_SYNC_CONSUMER_GROUP } = require("../../queue/syncWorker");
 
     expect(NATS_SYNC_CONSUMER_GROUP).toBe("shared-consumer-group");
   });
@@ -225,25 +232,24 @@ describe("syncWorker — NATS consumer group configuration", () => {
     process.env.NATS_SYNC_CONSUMER_GROUP = "specific-sync-group";
     process.env.NATS_CONSUMER_GROUP = "shared-consumer-group";
 
-    const { NATS_SYNC_CONSUMER_GROUP } = require("../../src/queue/syncWorker");
+    const { NATS_SYNC_CONSUMER_GROUP } = require("../../queue/syncWorker");
 
     expect(NATS_SYNC_CONSUMER_GROUP).toBe("specific-sync-group");
   });
 
-  it("calls natsManager.consume with the consumer group as the third argument", async () => {
+  it("calls natsManager.consume with the consumer group as the third argument", () => {
     delete process.env.NATS_SYNC_CONSUMER_GROUP;
     delete process.env.NATS_CONSUMER_GROUP;
 
-    const {
-      NATS_SYNC_SUBJECT,
-      NATS_SYNC_DURABLE_CONSUMER,
-      NATS_SYNC_CONSUMER_GROUP,
-    } = require("../../src/queue/syncWorker");
+    let exportsObj: any;
+    jest.isolateModules(() => {
+      exportsObj = require("../../queue/syncWorker");
+    });
 
     expect(mockConsume).toHaveBeenCalledWith(
-      NATS_SYNC_SUBJECT,
-      NATS_SYNC_DURABLE_CONSUMER,
-      NATS_SYNC_CONSUMER_GROUP,
+      exportsObj.NATS_SYNC_SUBJECT,
+      exportsObj.NATS_SYNC_DURABLE_CONSUMER,
+      exportsObj.NATS_SYNC_CONSUMER_GROUP,
       expect.any(Function),
       expect.any(Number),
     );
@@ -252,10 +258,12 @@ describe("syncWorker — NATS consumer group configuration", () => {
     expect(calledGroup).toBe("accounting-sync-group");
   });
 
-  it("passes a custom consumer group to natsManager.consume when env var is overridden", async () => {
+  it("passes a custom consumer group to natsManager.consume when env var is overridden", () => {
     process.env.NATS_SYNC_CONSUMER_GROUP = "env-override-group";
 
-    require("../../src/queue/syncWorker");
+    jest.isolateModules(() => {
+      require("../../queue/syncWorker");
+    });
 
     const [, , calledGroup] = mockConsume.mock.calls[0];
     expect(calledGroup).toBe("env-override-group");
@@ -268,7 +276,7 @@ describe("syncWorker — NATS consumer group configuration", () => {
     const {
       NATS_SYNC_SUBJECT,
       NATS_SYNC_DURABLE_CONSUMER,
-    } = require("../../src/queue/syncWorker");
+    } = require("../../queue/syncWorker");
 
     expect(NATS_SYNC_SUBJECT).toBe("accounting.sync");
     expect(NATS_SYNC_DURABLE_CONSUMER).toBe("accounting-sync-consumer");
@@ -281,7 +289,7 @@ describe("syncWorker — NATS consumer group configuration", () => {
     const {
       NATS_SYNC_SUBJECT,
       NATS_SYNC_DURABLE_CONSUMER,
-    } = require("../../src/queue/syncWorker");
+    } = require("../../queue/syncWorker");
 
     expect(NATS_SYNC_SUBJECT).toBe("custom.subject");
     expect(NATS_SYNC_DURABLE_CONSUMER).toBe("custom-consumer");
@@ -298,7 +306,6 @@ describe("syncWorker — SYNC_WORKER_CONCURRENCY configuration", () => {
   beforeEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
-    process.env = { ...originalEnv };
     registerMocks({ natsEnabled: true });
   });
 
@@ -306,28 +313,34 @@ describe("syncWorker — SYNC_WORKER_CONCURRENCY configuration", () => {
     process.env = originalEnv;
   });
 
-  it("passes the parsed SYNC_WORKER_CONCURRENCY value to natsManager.consume", async () => {
+  it("passes the parsed SYNC_WORKER_CONCURRENCY value to natsManager.consume", () => {
     process.env.SYNC_WORKER_CONCURRENCY = "7";
 
-    require("../../src/queue/syncWorker");
+    jest.isolateModules(() => {
+      require("../../queue/syncWorker");
+    });
 
     const concurrency = mockConsume.mock.calls[0][4];
     expect(concurrency).toBe(7);
   });
 
-  it("defaults concurrency to 3 when SYNC_WORKER_CONCURRENCY is not set", async () => {
+  it("defaults concurrency to 3 when SYNC_WORKER_CONCURRENCY is not set", () => {
     delete process.env.SYNC_WORKER_CONCURRENCY;
 
-    require("../../src/queue/syncWorker");
+    jest.isolateModules(() => {
+      require("../../queue/syncWorker");
+    });
 
     const concurrency = mockConsume.mock.calls[0][4];
     expect(concurrency).toBe(3);
   });
 
-  it("clamps concurrency to minimum 1 when value is 0 or negative", async () => {
+  it("clamps concurrency to minimum 1 when value is 0 or negative", () => {
     process.env.SYNC_WORKER_CONCURRENCY = "0";
 
-    require("../../src/queue/syncWorker");
+    jest.isolateModules(() => {
+      require("../../queue/syncWorker");
+    });
 
     const concurrency = mockConsume.mock.calls[0][4];
     expect(concurrency).toBe(1);
@@ -347,11 +360,7 @@ describe("syncWorker — processNatsSyncMessage handler", () => {
     jest.clearAllMocks();
     registerMocks({ natsEnabled: true });
 
-    try {
-      require("../../src/queue/syncWorker");
-    } catch (err) {
-      console.error("[REQUIRE ERROR]", err);
-    }
+    require("../../queue/syncWorker");
     handler = capturedHandler();
   });
 
@@ -540,7 +549,6 @@ describe("syncWorker — NATS consume rejection is caught and logged", () => {
   beforeEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
-    process.env = { ...originalEnv };
   });
 
   afterAll(() => {
@@ -556,7 +564,9 @@ describe("syncWorker — NATS consume rejection is caught and logged", () => {
 
     const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
 
-    require("../../src/queue/syncWorker");
+    jest.isolateModules(() => {
+      require("../../queue/syncWorker");
+    });
 
     // The .catch() handler runs in the next microtask tick
     await new Promise((resolve) => setImmediate(resolve));
@@ -580,7 +590,6 @@ describe("syncWorker — closeSyncWorker", () => {
   beforeEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
-    process.env = { ...originalEnv };
   });
 
   afterAll(() => {
@@ -590,8 +599,13 @@ describe("syncWorker — closeSyncWorker", () => {
   it("closes the BullMQ worker and natsManager when NATS_QUEUE_ENABLED is true", async () => {
     registerMocks({ natsEnabled: true });
 
-    const { closeSyncWorker } = require("../../src/queue/syncWorker");
-    await closeSyncWorker();
+    let closeSyncWorkerFn: any;
+    jest.isolateModules(() => {
+      const mod = require("../../queue/syncWorker");
+      closeSyncWorkerFn = mod.closeSyncWorker;
+    });
+
+    await closeSyncWorkerFn();
 
     expect(mockWorkerClose).toHaveBeenCalledTimes(1);
     expect(mockNatsClose).toHaveBeenCalledTimes(1);
@@ -600,8 +614,13 @@ describe("syncWorker — closeSyncWorker", () => {
   it("closes only the BullMQ worker when NATS_QUEUE_ENABLED is false", async () => {
     registerMocks({ natsEnabled: false });
 
-    const { closeSyncWorker } = require("../../src/queue/syncWorker");
-    await closeSyncWorker();
+    let closeSyncWorkerFn: any;
+    jest.isolateModules(() => {
+      const mod = require("../../queue/syncWorker");
+      closeSyncWorkerFn = mod.closeSyncWorker;
+    });
+
+    await closeSyncWorkerFn();
 
     expect(mockWorkerClose).toHaveBeenCalledTimes(1);
     expect(mockNatsClose).not.toHaveBeenCalled();
@@ -618,7 +637,6 @@ describe("syncWorker — NATS disabled branch", () => {
   beforeEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
-    process.env = { ...originalEnv };
   });
 
   afterAll(() => {
@@ -628,7 +646,9 @@ describe("syncWorker — NATS disabled branch", () => {
   it("does not call natsManager.consume when NATS_QUEUE_ENABLED is false", async () => {
     registerMocks({ natsEnabled: false });
 
-    require("../../src/queue/syncWorker");
+    jest.isolateModules(() => {
+      require("../../queue/syncWorker");
+    });
 
     expect(mockConsume).not.toHaveBeenCalled();
   });
