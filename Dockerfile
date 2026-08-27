@@ -30,7 +30,7 @@ ENV NODE_ENV=production
 
 # Install production dependencies, then prune in a SINGLE RUN to minimize layer size.
 # All removals in the same layer prevent deleted files from inflating the image.
-RUN npm ci --omit=dev --ignore-scripts && \
+RUN npm ci --omit=dev --legacy-peer-deps --ignore-scripts && \
     npm cache clean --force && \
     \
     # ── Prune text bloat (docs, type declarations, source maps, test suites) ──── \
