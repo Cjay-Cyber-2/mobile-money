@@ -1,5 +1,5 @@
 import logger from "../../utils/logger";
-import * as StellarSdk from "stellar-sdk";
+import * as StellarSdk from "@stellar/stellar-sdk";
 import { getStellarServer, getNetworkPassphrase } from "../../config/stellar";
 import dotenv from "dotenv";
 import { transactionTotal, transactionErrorsTotal } from "../../utils/metrics";
@@ -507,7 +507,7 @@ export class StellarService {
         .addOperation(
           StellarSdk.Operation.setOptions({
             setFlags:
-              StellarSdk.xdr.AccountFlags.authClawbackEnabledFlag().value,
+              StellarSdk.xdr.AccountFlags.authClawbackEnabledFlag.value,
           }),
         )
         .setTimeout(30)

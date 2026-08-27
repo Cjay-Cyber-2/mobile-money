@@ -1,6 +1,6 @@
 import logger from "../utils/logger";
 import { Router, Request, Response } from "express";
-import * as StellarSdk from "stellar-sdk";
+import * as StellarSdk from "@stellar/stellar-sdk";
 import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
 import { getStellarServer, getNetworkPassphrase } from "../config/stellar";
@@ -217,7 +217,7 @@ export class Sep10Service {
 
     // Check each signature in the transaction
     for (const sig of transaction.signatures) {
-      const signatureBuffer = sig.signature();
+      const signatureBuffer = Buffer.from(sig.signature.toString(), "hex");
 
       // Try to verify this signature against each signer
       for (const signer of signers) {
@@ -300,10 +300,19 @@ export class Sep10Service {
 
     const domain = homeDomain || this.config.homeDomain;
     const now = Math.floor(Date.now() / 1000);
-    const timebounds = {
-      minTime: String(now),
-      maxTime: String(now + this.config.challengeExpiresIn),
-    };
+    // v16+ rejects inverted timebounds (minTime > maxTime) at build time, so a
+    // non-positive expiry yields valid bounds whose maxTime is already in the past
+    // (challenges are then rejected as expired during verification).
+    const timebounds =
+      this.config.challengeExpiresIn < 0
+        ? {
+            minTime: String(now - 60),
+            maxTime: String(now + this.config.challengeExpiresIn),
+          }
+        : {
+            minTime: String(now),
+            maxTime: String(now + this.config.challengeExpiresIn),
+          };
 
     // Create a source account with sequence number 0
     const sourceAccount = new StellarSdk.Account(clientPublicKey, "-1");
@@ -422,7 +431,10 @@ export class Sep10Service {
     const txHash = transaction.hash();
     const serverSigned = transaction.signatures.some((sig) => {
       try {
-        return this.serverKeypair.verify(txHash, sig.signature());
+        return this.serverKeypair.verify(
+          Buffer.from(txHash),
+          Buffer.from(sig.signature.toString(), "hex"),
+        );
       } catch {
         return false;
       }

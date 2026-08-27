@@ -7,7 +7,7 @@ import {
   isValidTransition,
 } from "../stellar/sep31";
 import { getStellarServer } from "../config/stellar";
-import * as StellarSdk from "stellar-sdk";
+import * as StellarSdk from "@stellar/stellar-sdk";
 
 /**
  * SEP-31 Transaction Monitor Job

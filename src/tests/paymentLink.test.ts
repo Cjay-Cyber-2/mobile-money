@@ -7,7 +7,7 @@ import {
   jest,
 } from "@jest/globals";
 import request from "supertest";
-import { Keypair } from "stellar-sdk";
+import { Keypair } from "@stellar/stellar-sdk";
 
 // Initialize valid Stellar keys in environment BEFORE loading the app to satisfy startup config checks
 const randomKeypair = Keypair.random();
