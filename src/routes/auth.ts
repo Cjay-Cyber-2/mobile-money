@@ -18,8 +18,11 @@ import {
   createUser,
   getUserPermissions,
   getUserByPhoneNumber,
+  getUserById,
   User,
 } from "../services/userService";
+import { smsService } from "../services/sms";
+import { translate } from "../utils/i18n";
 import { getLockoutStatus, recordFailedAttempt } from "../auth/lockout";
 import { verifyTOTPToken, verifyBackupCode, is2FAEnabled } from "../auth/2fa";
 import { evaluateAdminLoginAnomaly } from "../services/loginAnomaly";
@@ -252,8 +255,16 @@ authRoutes.post(
             // Mark verification as pending for this user
             await setVerificationPending(user.id, deviceCheck.verificationId);
 
-            // In production, send OTP via email/SMS
-            // For now, return it in response for testing
+            // Send OTP via SMS
+            try {
+              const locale = "en";
+              const message = translate("sms.otp", locale, { otp });
+              await smsService.sendToPhone(user.phone_number, message);
+              logger.info({ userId: user.id, verificationId: deviceCheck.verificationId }, "Device verification OTP sent via SMS");
+            } catch (smsErr) {
+              logger.error({ smsErr, userId: user.id }, "Failed to send device verification OTP SMS");
+            }
+
             logger.info(
               {
                 userId: user.id,
@@ -655,6 +666,20 @@ authRoutes.post(
             error: "Code generation failed",
           },
         );
+      }
+
+      // Fetch user to get their phone number
+      const user = await getUserById(payload.userId);
+      if (user) {
+        // Send OTP via SMS
+        try {
+          const locale = "en";
+          const message = translate("sms.otp", locale, { otp });
+          await smsService.sendToPhone(user.phone_number, message);
+          logger.info({ userId: payload.userId, verificationId }, "Verification OTP resent via SMS");
+        } catch (smsErr) {
+          logger.error({ smsErr, userId: payload.userId }, "Failed to resend verification OTP SMS");
+        }
       }
 
       logger.info(

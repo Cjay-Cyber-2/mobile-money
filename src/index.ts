@@ -688,6 +688,8 @@ async function initializeRuntime(): Promise<void> {
     const sslOptions = {
       key: fs.readFileSync(path.join(__dirname, "../certs/key.pem")),
       cert: fs.readFileSync(path.join(__dirname, "../certs/cert.pem")),
+      requestCert: true,
+      rejectUnauthorized: false,
     };
 
     const http2Server = http2.createSecureServer(
