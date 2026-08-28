@@ -5,6 +5,8 @@ import {
   WebhookDeliveryLog,
 } from "../models/merchantWebhook";
 import { SAMPLE_WEBHOOK_PAYLOAD } from "../routes/webhooks";
+import { WebhookCacheInvalidation } from "./cacheAside";
+import { signWebhookPayload } from "../crypto/webhookSigning";
 
 const model = new MerchantWebhookModel();
 
@@ -19,10 +21,17 @@ interface DeliveryResult {
 }
 
 /**
- * Sign a payload with HMAC-SHA256 — same scheme as the existing WebhookService.
+ * Sign a payload for delivery. Uses Ed25519 (`ed25519=<hex>`) when
+ * `WEBHOOK_ED25519_SIGNING_KEY` is configured, otherwise falls back to
+ * HMAC-SHA256 (`sha256=<hex>`) using the merchant's own webhook secret —
+ * same scheme as the platform-wide WebhookService.
  */
 function signPayload(payload: string, secret: string): string {
-  return "sha256=" + createHmac("sha256", secret).update(payload).digest("hex");
+  return signWebhookPayload(
+    payload,
+    (p) => "sha256=" + createHmac("sha256", secret).update(p).digest("hex"),
+    process.env.WEBHOOK_ED25519_SIGNING_KEY,
+  ).signature;
 }
 
 /**
@@ -63,7 +72,12 @@ async function deliver(
     const responseBody = await response.text().catch(() => "");
 
     if (response.ok) {
-      return { status: "delivered", httpStatus: response.status, responseBody, durationMs };
+      return {
+        status: "delivered",
+        httpStatus: response.status,
+        responseBody,
+        durationMs,
+      };
     }
     return {
       status: "failed",
@@ -103,7 +117,12 @@ export class MerchantWebhookService {
       timestamp: new Date().toISOString(),
     };
 
-    const result = await deliver(webhook.url, webhook.secret, payload, this.fetchImpl);
+    const result = await deliver(
+      webhook.url,
+      webhook.secret,
+      payload,
+      this.fetchImpl,
+    );
 
     const log = await model.insertDeliveryLog({
       webhookId: webhook.id,
@@ -130,11 +149,19 @@ export class MerchantWebhookService {
     payload: Record<string, unknown>,
   ): Promise<void> {
     const webhooks = await model.findByUserId(userId);
-    const active = webhooks.filter((w) => w.isActive && w.events.includes(eventType));
+    const active = webhooks.filter(
+      (w) => w.isActive && w.events.includes(eventType),
+    );
 
     await Promise.allSettled(
       active.map(async (webhook) => {
-        const result = await deliver(webhook.url, webhook.secret, payload, this.fetchImpl);
+        const result = await deliver(
+          webhook.url,
+          webhook.secret,
+          payload,
+          this.fetchImpl,
+        );
+
         await model.insertDeliveryLog({
           webhookId: webhook.id,
           eventType,
@@ -146,6 +173,15 @@ export class MerchantWebhookService {
           durationMs: result.durationMs,
           isTest: false,
         });
+
+        // Invalidate merchant config caches on successful webhook delivery
+        // This ensures fresh settings are loaded after webhook recovery
+        if (result.status === "delivered") {
+          await WebhookCacheInvalidation.invalidateOnWebhookRecovery(
+            userId,
+            webhook.id,
+          );
+        }
       }),
     );
   }

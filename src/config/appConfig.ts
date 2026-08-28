@@ -86,6 +86,112 @@ export const configSchema = convict({
         env: "MTN_CALLBACK_SIGNATURE_HEADER",
       },
     },
+    mtnUganda: {
+      minAmount: {
+        doc: "Minimum transaction amount for MTN Uganda (UGX)",
+        format: "nat",
+        default: 500,
+        env: "MTN_UG_MIN_AMOUNT",
+      },
+      maxAmount: {
+        doc: "Maximum transaction amount for MTN Uganda (UGX)",
+        format: "nat",
+        default: 5000000,
+        env: "MTN_UG_MAX_AMOUNT",
+      },
+      baseUrl: {
+        doc: "Base URL for MTN Uganda MoMo API",
+        format: String,
+        default: "https://sandbox.momodeveloper.mtn.com",
+        env: "MTN_UG_BASE_URL",
+      },
+      environment: {
+        doc: "MTN Uganda API Environment (sandbox or mtnuganda)",
+        format: String,
+        default: "sandbox",
+        env: "MTN_UG_ENVIRONMENT",
+      },
+      subscriptionKey: {
+        doc: "Subscription key for the MTN Uganda Disbursement API",
+        format: String,
+        default: "",
+        env: "MTN_UG_DISBURSEMENT_SUB_KEY",
+      },
+      apiUser: {
+        doc: "UUID generated for MTN Uganda API User",
+        format: String,
+        default: "",
+        env: "MTN_UG_API_USER",
+      },
+      apiKey: {
+        doc: "API Key generated during MTN Uganda provisioning",
+        format: String,
+        default: "",
+        env: "MTN_UG_API_KEY",
+      },
+      currency: {
+        doc: "Currency code for MTN Uganda",
+        format: String,
+        default: "UGX",
+        env: "MTN_UG_CURRENCY",
+      },
+    },
+    moovCoteDivoire: {
+      minAmount: {
+        doc: "Minimum transaction amount for Moov Côte d'Ivoire (XOF)",
+        format: "nat",
+        default: 100,
+        env: "MOOV_CI_MIN_AMOUNT",
+      },
+      maxAmount: {
+        doc: "Maximum transaction amount for Moov Côte d'Ivoire (XOF)",
+        format: "nat",
+        default: 1000000,
+        env: "MOOV_CI_MAX_AMOUNT",
+      },
+      baseUrl: {
+        doc: "Base URL for the Moov Côte d'Ivoire API",
+        format: String,
+        default: "",
+        env: "MOOV_CI_BASE_URL",
+      },
+      authPath: {
+        doc: "Path for acquiring a Moov Côte d'Ivoire access token",
+        format: String,
+        default: "/oauth/token",
+        env: "MOOV_CI_AUTH_PATH",
+      },
+      depositPushPath: {
+        doc: "Path for triggering a Moov Côte d'Ivoire deposit push",
+        format: String,
+        default: "/payments/deposit",
+        env: "MOOV_CI_DEPOSIT_PUSH_PATH",
+      },
+      apiKey: {
+        doc: "Client ID for the Moov Côte d'Ivoire API",
+        format: String,
+        default: "",
+        env: "MOOV_CI_API_KEY",
+      },
+      apiSecret: {
+        doc: "Client secret for the Moov Côte d'Ivoire API",
+        format: String,
+        default: "",
+        env: "MOOV_CI_API_SECRET",
+      },
+      currency: {
+        doc: "Currency code for Moov Côte d'Ivoire transactions",
+        format: ["XOF"],
+        default: "XOF",
+        env: "MOOV_CI_CURRENCY",
+      },
+      timeoutMs: {
+        doc: "HTTP timeout for Moov Côte d'Ivoire API requests",
+        format: "nat",
+        default: 10000,
+        env: "MOOV_CI_TIMEOUT_MS",
+      },
+    },
     airtel: {
       minAmount: {
         doc: "Minimum transaction amount for Airtel (XAF)",
@@ -98,6 +204,24 @@ export const configSchema = convict({
         format: "nat",
         default: 1000000,
         env: "AIRTEL_MAX_AMOUNT",
+      },
+      webBaseUrl: {
+        doc: "Airtel web base URL (session mode)",
+        format: String,
+        default: "",
+        env: "AIRTEL_WEB_BASE_URL",
+      },
+      directBaseUrl: {
+        doc: "Airtel direct base URL (OAuth2 mode)",
+        format: String,
+        default: "https://openapi.airtel.africa",
+        env: "AIRTEL_DIRECT_BASE_URL",
+      },
+      sandboxBaseUrl: {
+        doc: "Airtel sandbox base URL (for sandbox mode)",
+        format: String,
+        default: "https://sandbox.airtel.africa",
+        env: "AIRTEL_SANDBOX_BASE_URL",
       },
     },
     orange: {
@@ -112,6 +236,98 @@ export const configSchema = convict({
         format: "nat",
         default: 750000,
         env: "ORANGE_MAX_AMOUNT",
+      },
+    },
+    orangeMadagascar: {
+      minAmount: {
+        doc: "Minimum transaction amount for Orange Madagascar (MGA)",
+        format: "nat",
+        default: 100,
+        env: "ORANGE_MADAGASCAR_MIN_AMOUNT",
+      },
+      maxAmount: {
+        doc: "Maximum transaction amount for Orange Madagascar (MGA)",
+        format: "nat",
+        default: 5000000,
+        env: "ORANGE_MADAGASCAR_MAX_AMOUNT",
+      },
+      callbackSecret: {
+        doc: "Orange Madagascar callback HMAC secret for verifying incoming callbacks",
+        format: String,
+        default: "",
+        env: "ORANGE_MADAGASCAR_CALLBACK_SECRET",
+      },
+      callbackSignatureHeader: {
+        doc: "Header used by Orange Madagascar for callback signature verification",
+        format: String,
+        default: "X-Callback-Signature",
+        env: "ORANGE_MADAGASCAR_CALLBACK_SIGNATURE_HEADER",
+      },
+    },
+    orangeGuinea: {
+      minAmount: {
+        doc: "Minimum transaction amount for Orange Guinea (GNF)",
+        format: "nat",
+        default: 100,
+        env: "ORANGE_GUINEA_MIN_AMOUNT",
+      },
+      maxAmount: {
+        doc: "Maximum transaction amount for Orange Guinea (GNF)",
+        format: "nat",
+        default: 5000000,
+        env: "ORANGE_GUINEA_MAX_AMOUNT",
+      },
+      callbackSecret: {
+        doc: "Orange Guinea callback HMAC secret for verifying incoming callbacks",
+        format: String,
+        default: "",
+        env: "ORANGE_GUINEA_CALLBACK_SECRET",
+      },
+      callbackSignatureHeader: {
+        doc: "Header used by Orange Guinea for callback signature verification",
+        format: String,
+        default: "X-Callback-Signature",
+        env: "ORANGE_GUINEA_CALLBACK_SIGNATURE_HEADER",
+      },
+    },
+    waveSenegal: {
+      minAmount: {
+        doc: "Minimum transaction amount for Wave Senegal (XOF)",
+        format: "nat",
+        default: 100,
+        env: "WAVE_SENEGAL_MIN_AMOUNT",
+      },
+      maxAmount: {
+        doc: "Maximum transaction amount for Wave Senegal (XOF)",
+        format: "nat",
+        default: 5000000,
+        env: "WAVE_SENEGAL_MAX_AMOUNT",
+      },
+      currency: {
+        doc: "Settlement currency for Wave Senegal",
+        format: ["XOF"],
+        default: "XOF",
+        env: "WAVE_CURRENCY",
+      },
+      webhookSecret: {
+        doc: "Wave Senegal webhook HMAC secret for verifying incoming events",
+        format: String,
+        default: "",
+        env: "WAVE_WEBHOOK_SECRET",
+      },
+    },
+    smsPortal: {
+      minAmount: {
+        doc: "Minimum transaction amount for SMS Portal (various currencies)",
+        format: "nat",
+        default: 100,
+        env: "SMS_PORTAL_MIN_AMOUNT",
+      },
+      maxAmount: {
+        doc: "Maximum transaction amount for SMS Portal (various currencies)",
+        format: "nat",
+        default: 5000000,
+        env: "SMS_PORTAL_MAX_AMOUNT",
       },
     },
   },
@@ -250,14 +466,16 @@ export const configSchema = convict({
   // Mobile Money Provider Health Checks
   healthCheck: {
     failureThreshold: {
-      doc: "Number of failures before opening circuit breaker",
+      doc: "Number of consecutive failures before opening the health-check circuit breaker",
       format: "nat",
       default: 3,
+      env: "PROVIDER_HEALTH_FAILURE_THRESHOLD",
     },
     openDurationMs: {
-      doc: "Duration to keep circuit breaker open in milliseconds",
+      doc: "Duration (ms) to keep the health-check circuit breaker open before allowing a retry",
       format: "nat",
       default: 60000, // 1 minute
+      env: "PROVIDER_HEALTH_OPEN_DURATION_MS",
     },
   },
 
@@ -272,6 +490,12 @@ export const configSchema = convict({
       doc: "Orange refresh token skew in milliseconds",
       format: "nat",
       default: 60000, // 1 minute
+    },
+    requestTimeoutMs: {
+      doc: "Orange API request timeout in milliseconds",
+      format: "nat",
+      default: 30000,
+      env: "ORANGE_REQUEST_TIMEOUT_MS",
     },
   },
 
@@ -354,25 +578,87 @@ export const configSchema = convict({
     },
   },
 
+  // SMS Failover Settings
+  sms: {
+    primaryProvider: {
+      doc: "Primary SMS provider (e.g. twilio, africastalking, infobip)",
+      format: String,
+      default: "twilio",
+      env: "SMS_PROVIDER",
+    },
+    secondaryProvider: {
+      doc: "Secondary/fallback SMS provider",
+      format: String,
+      default: "africastalking",
+      env: "SMS_PROVIDER_SECONDARY",
+    },
+    timeoutMs: {
+      doc: "Timeout in milliseconds before failing over to secondary provider",
+      format: "nat",
+      default: 5000,
+      env: "SMS_TIMEOUT_MS",
+    },
+  },
+
   // Response compression
   compression: {
     enabled: {
-      doc: 'Enable HTTP response compression',
+      doc: "Enable HTTP response compression",
       format: Boolean,
       default: true,
-      env: 'COMPRESSION_ENABLED',
+      env: "COMPRESSION_ENABLED",
     },
     threshold: {
-      doc: 'Minimum response size in bytes to trigger compression',
-      format: 'nat',
+      doc: "Minimum response size in bytes to trigger compression",
+      format: "nat",
       default: 1024,
-      env: 'COMPRESSION_THRESHOLD',
+      env: "COMPRESSION_THRESHOLD",
     },
     level: {
-      doc: 'Gzip compression level (0-9) used by zlib',
-      format: 'nat',
+      doc: "Gzip compression level (0-9) used by zlib",
+      format: "nat",
       default: 6,
-      env: 'COMPRESSION_LEVEL',
+      env: "COMPRESSION_LEVEL",
+    },
+  },
+
+  // Worker Concurrency Configuration
+  worker: {
+    concurrency: {
+      doc: "Transaction processing worker concurrency limit",
+      format: "nat",
+      default: 50,
+      env: "TRANSACTION_WORKER_CONCURRENCY",
+    },
+    syncConcurrency: {
+      doc: "Accounting sync worker concurrency limit",
+      format: "nat",
+      default: 20,
+      env: "SYNC_WORKER_CONCURRENCY",
+    },
+    webhookRetryConcurrency: {
+      doc: "Webhook retry worker concurrency limit",
+      format: "nat",
+      default: 10,
+      env: "WEBHOOK_RETRY_WORKER_CONCURRENCY",
+    },
+    accountingRetryConcurrency: {
+      doc: "Accounting retry worker concurrency limit",
+      format: "nat",
+      default: 5,
+      env: "ACCOUNTING_RETRY_WORKER_CONCURRENCY",
+    },
+    accountingTokenRefreshConcurrency: {
+      doc: "Accounting token refresh worker concurrency limit",
+      format: "nat",
+      default: 3,
+      env: "ACCOUNTING_TOKEN_REFRESH_WORKER_CONCURRENCY",
+    },
+    providerBalanceAlertConcurrency: {
+      doc: "Provider balance alert worker concurrency limit (default 1 – sequential to prevent duplicate alerts)",
+      format: "nat",
+      default: 1,
+      env: "PROVIDER_BALANCE_ALERT_WORKER_CONCURRENCY",
     },
   },
 });

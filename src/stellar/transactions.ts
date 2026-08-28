@@ -7,7 +7,7 @@ import {
   StrKey,
   Transaction,
   TransactionBuilder,
-} from "stellar-sdk";
+} from "@stellar/stellar-sdk";
 import {
   getFeeBumpConfig,
   getNetworkPassphrase,
@@ -58,11 +58,17 @@ function getConfiguredBaseFee(networkBaseFee: number): number {
   return Math.max(config.baseFeeStroops, networkBaseFee);
 }
 
-function getInnerTransactionFee(operationCount: number, baseFee: number): number {
+function getInnerTransactionFee(
+  operationCount: number,
+  baseFee: number,
+): number {
   return operationCount * baseFee;
 }
 
-function getRequiredFeeBumpFee(operationCount: number, baseFee: number): number {
+function getRequiredFeeBumpFee(
+  operationCount: number,
+  baseFee: number,
+): number {
   return getChargedOperationCount(operationCount) * baseFee;
 }
 
@@ -106,7 +112,8 @@ async function buildInnerTransaction(
   const server = getStellarServer();
   const networkPassphrase = getNetworkPassphrase();
   const sourceAccountRecord = await server.loadAccount(options.sourceAccount);
-  const txTimebounds = options.timebounds ?? (await server.fetchTimebounds(300));
+  const txTimebounds =
+    options.timebounds ?? (await server.fetchTimebounds(300));
 
   let builder = new TransactionBuilder(sourceAccountRecord, {
     fee: String(getInnerTransactionFee(options.operations.length, baseFee)),
@@ -162,7 +169,7 @@ export const buildTransactionWithFeeBump = async (
   if (!enableFeeBump) {
     return {
       envelope: innerTransaction.toEnvelope().toXDR("base64"),
-      innerTransactionHash: innerTransaction.hash().toString("hex"),
+      innerTransactionHash: Buffer.from(innerTransaction.hash()).toString("hex"),
       feeBumpTransactionHash: "",
       fee: Number(innerTransaction.fee),
       usedFeeBump: false,
@@ -183,8 +190,8 @@ export const buildTransactionWithFeeBump = async (
 
   return {
     envelope: feeBumpTransaction.toEnvelope().toXDR("base64"),
-    innerTransactionHash: innerTransaction.hash().toString("hex"),
-    feeBumpTransactionHash: feeBumpTransaction.hash().toString("hex"),
+    innerTransactionHash: Buffer.from(innerTransaction.hash()).toString("hex"),
+    feeBumpTransactionHash: Buffer.from(feeBumpTransaction.hash()).toString("hex"),
     fee: Number(feeBumpTransaction.fee),
     usedFeeBump: true,
   };
