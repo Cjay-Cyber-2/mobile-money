@@ -24,6 +24,7 @@ export interface CreateAuditLogInput {
 
 export interface AuditLogFilter {
   adminId?: string;
+  action?: string;
   resource?: string;
   resourceId?: string;
   limit?: number;
@@ -41,6 +42,28 @@ const selectFields = `
   user_agent AS "userAgent",
   created_at AS "createdAt"
 `;
+
+const buildFilterQuery = (filter: AuditLogFilter) => {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  for (const [column, value] of [
+    ["admin_id", filter.adminId],
+    ["action", filter.action],
+    ["resource", filter.resource],
+    ["resource_id", filter.resourceId],
+  ] as const) {
+    if (value) {
+      params.push(value);
+      conditions.push(`${column} = $${params.length}`);
+    }
+  }
+
+  return {
+    whereClause: conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "",
+    params,
+  };
+};
 
 export class AuditLogModel {
   async create(input: CreateAuditLogInput): Promise<AuditLog> {
@@ -86,26 +109,7 @@ export class AuditLogModel {
   }
 
   async list(filter: AuditLogFilter = {}): Promise<AuditLog[]> {
-    const conditions: string[] = [];
-    const params: unknown[] = [];
-
-    if (filter.adminId) {
-      params.push(filter.adminId);
-      conditions.push(`admin_id = $${params.length}`);
-    }
-
-    if (filter.resource) {
-      params.push(filter.resource);
-      conditions.push(`resource = $${params.length}`);
-    }
-
-    if (filter.resourceId) {
-      params.push(filter.resourceId);
-      conditions.push(`resource_id = $${params.length}`);
-    }
-
-    const whereClause =
-      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const { whereClause, params } = buildFilterQuery(filter);
 
     params.push(filter.limit ?? 100);
     const limitParameter = params.length;
@@ -124,5 +128,15 @@ export class AuditLogModel {
     );
 
     return result.rows;
+  }
+
+  async count(filter: AuditLogFilter = {}): Promise<number> {
+    const { whereClause, params } = buildFilterQuery(filter);
+    const result = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM audit_logs ${whereClause}`,
+      params,
+    );
+
+    return Number(result.rows[0]?.count ?? 0);
   }
 }

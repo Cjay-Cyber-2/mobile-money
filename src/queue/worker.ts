@@ -20,7 +20,6 @@ import { UserModel } from "../models/users";
 import { EmailService } from "../services/email";
 import { withRetry } from "../services/retry";
 import { notifyTransactionWebhook, WebhookService } from "../services/webhook";
-import { smsService } from "../services/sms";
 import { notificationRouter } from "../services/notificationRouter";
 import { pushNotificationService } from "../services/push";
 import { capturePersistentFailure } from "./dlq";
@@ -328,36 +327,6 @@ async function processTransaction(
   // Receiver is the mobile money account holder identified by their phone number
   const receiverName = phoneNumber;
 
-  const sendTxnSms = async (
-    kind: "transaction_completed" | "transaction_failed",
-    errorMessage?: string,
-  ) => {
-    try {
-      const txRow = await transactionModel.findById(transactionId);
-      if (!txRow?.userId) return;
-
-      const user = await userModel.findById(txRow.userId);
-      if (user?.smsOptOut) {
-        console.log(
-          `[${transactionId}] SMS notifications skipped (User Opted Out)`,
-        );
-        return;
-      }
-
-      const ref = txRow?.referenceNumber ?? transactionId;
-      await smsService.notifyTransactionEvent(phoneNumber, {
-        referenceNumber: ref,
-        type,
-        amount: String(amount),
-        provider,
-        kind,
-        errorMessage,
-      });
-    } catch (smsErr) {
-      log.error({ smsErr }, "SMS notification error");
-    }
-  };
-
   const stellarResult = await withRetry(() => {
     // Use high-throughput pool service when available; falls back to single-account mode
     const issuerSecret = process.env.STELLAR_ISSUER_SECRET?.trim();
@@ -575,11 +544,6 @@ async function processTransaction(
       transactionId,
       TransactionStatus.Failed,
     );
-    await notifyTransactionWebhook(transactionId, "transaction.failed", {
-      transactionModel: transactionModel as any,
-      webhookService,
-    });
-
     const transaction = await transactionModel.findById(transactionId);
     if (transaction) {
       await notificationRouter.routeTransactionNotification(
@@ -588,6 +552,11 @@ async function processTransaction(
         getErrorMessage(error),
       );
     }
+
+    await notifyTransactionWebhook(transactionId, "transaction.failed", {
+      transactionModel: transactionModel as any,
+      webhookService,
+    });
 
     // Fan-out event
     await rabbitMQManager.publish(
