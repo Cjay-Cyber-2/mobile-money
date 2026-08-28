@@ -63,6 +63,12 @@ function mapToSep31Status(
       return Sep31Status.Error;
     case TransactionStatus.Cancelled:
       return Sep31Status.Error;
+    case TransactionStatus.Expired:
+      // #1793: an expired transaction never reached a terminal state with
+      // the provider, but SEP-31 has no "expired" status — Error is the
+      // closest terminal signal a sending anchor's polling client expects
+      // rather than leaving it (incorrectly) reported as still pending.
+      return Sep31Status.Error;
     default:
       return Sep31Status.PendingSender;
   }
