@@ -246,14 +246,20 @@ router.post("/", async (req: Request, res: Response) => {
         transaction_id: payload.transaction_id,
       });
     }
-    if (payload.status && payload.status !== transaction.status) {
-      await transactionModel.updateStatus(
+    if (payload.status) {
+      const updated = await transactionModel.updateStatus(
         transaction.id,
         payload.status as TransactionStatus,
       );
-      console.log(
-        `[webhook] Updated transaction ${transaction.id} to ${payload.status}`,
-      );
+      if (updated) {
+        console.log(
+          `[webhook] Updated transaction ${transaction.id} to ${payload.status}`,
+        );
+      } else {
+        console.log(
+          `[webhook] Skipped status transition for transaction ${transaction.id} to ${payload.status} (no-op or invalid state transition)`,
+        );
+      }
     }
     console.log(
       `[webhook] Processed event ${payload.event_id} for transaction ${payload.transaction_id}`,
@@ -311,14 +317,20 @@ router.post(
           transaction_id: payload.transaction_id,
         });
       }
-      if (payload.status && payload.status !== transaction.status) {
-        await transactionModel.updateStatus(
+      if (payload.status) {
+        const updated = await transactionModel.updateStatus(
           transaction.id,
           payload.status as TransactionStatus,
         );
-        console.log(
-          `[webhook-airtel] Updated transaction ${transaction.id} to ${payload.status}`,
-        );
+        if (updated) {
+          console.log(
+            `[webhook-airtel] Updated transaction ${transaction.id} to ${payload.status}`,
+          );
+        } else {
+          console.log(
+            `[webhook-airtel] Skipped status transition for transaction ${transaction.id} to ${payload.status} (no-op or invalid state transition)`,
+          );
+        }
       }
       console.log(
         `[webhook-airtel] Processed event ${payload.event_id} for transaction ${payload.transaction_id}`,
