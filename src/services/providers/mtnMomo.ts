@@ -475,7 +475,7 @@ export class MtnMomoProvider extends BaseProvider {
           items: items.map((item) => ({
             referenceId: item.referenceId,
             amount: item.amount,
-            currency: this.currency,
+            currency: process.env.MTN_CURRENCY || "XAF",
             payee: {
               partyIdType: "MSISDN",
               partyId: item.phoneNumber,
@@ -486,7 +486,7 @@ export class MtnMomoProvider extends BaseProvider {
           headers: {
             Authorization: `Bearer ${token}`,
             "Ocp-Apim-Subscription-Key": this.subscriptionKey,
-            "X-Target-Environment": this.environment,
+            "X-Target-Environment": this.targetEnvironment,
             "Content-Type": "application/json",
           },
         },

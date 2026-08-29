@@ -365,7 +365,7 @@ bulkRoutes.post(
   authenticateToken,
   async (req: Request, res: Response) => {
     const { executeProviderBatchPayout } = await import(
-      "../queue/payoutBatchWorker"
+      "../queue/payoutBatchWorker.js"
     );
     const provider = (req.body?.provider || "mtn").toLowerCase();
     const result = await executeProviderBatchPayout(provider);
