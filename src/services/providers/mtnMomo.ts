@@ -110,6 +110,19 @@ export type MtnTransactionStatus =
   | "pending"
   | "unknown";
 
+export interface BatchPayoutItem {
+  referenceId: string;
+  phoneNumber: string;
+  amount: string;
+}
+
+export interface BatchPayoutResult {
+  referenceId: string;
+  success: boolean;
+  providerReference?: string;
+  error?: string;
+}
+
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 export interface MtnMomoConfig extends Partial<ProviderAuthConfig> {
@@ -410,6 +423,116 @@ export class MtnMomoProvider extends BaseProvider {
       });
 
       return { success: false, error };
+    }
+  }
+
+  /**
+   * MTN MoMo Batch Payout - submits multiple payout items in a single request
+   */
+  async sendBatchPayout(
+    items: BatchPayoutItem[],
+    requestId?: string,
+  ): Promise<{
+    success: boolean;
+    results: BatchPayoutResult[];
+    error?: unknown;
+  }> {
+    const log = requestId ? logger.child({ requestId }) : logger;
+    const MAX_BATCH_SIZE = 100;
+
+    if (items.length === 0) {
+      return { success: true, results: [] };
+    }
+
+    if (items.length > MAX_BATCH_SIZE) {
+      return {
+        success: false,
+        results: items.map((item) => ({
+          referenceId: item.referenceId,
+          success: false,
+          error: `Batch size exceeds maximum of ${MAX_BATCH_SIZE}`,
+        })),
+        error: new Error(
+          `Batch size ${items.length} exceeds maximum of ${MAX_BATCH_SIZE}`,
+        ),
+      };
+    }
+
+    log.info(
+      { itemCount: items.length },
+      "MTN MoMo: Starting batch payout",
+    );
+    const startTime = Date.now();
+
+    try {
+      const token = await this.getAccessToken();
+      const batchReference = `BATCH-${randomUUID()}`;
+
+      const response = await axios.post(
+        `${this.baseUrl}/disbursement/v2_0/batch-payout`,
+        {
+          batchReference,
+          items: items.map((item) => ({
+            referenceId: item.referenceId,
+            amount: item.amount,
+            currency: process.env.MTN_CURRENCY || "XAF",
+            payee: {
+              partyIdType: "MSISDN",
+              partyId: item.phoneNumber,
+            },
+          })),
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Ocp-Apim-Subscription-Key": this.subscriptionKey,
+            "X-Target-Environment": this.targetEnvironment,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+
+      const durationMs = Date.now() - startTime;
+      recordTelecomLatency({
+        provider: this.providerName,
+        operation: "sendBatchPayout",
+        durationMs,
+        success: true,
+        statusCode: response.status,
+        endpoint: "/disbursement/v2_0/batch-payout",
+      });
+
+      const results: BatchPayoutResult[] = items.map((item) => ({
+        referenceId: item.referenceId,
+        success: true,
+        providerReference: batchReference,
+      }));
+
+      return { success: true, results };
+    } catch (error: any) {
+      const durationMs = Date.now() - startTime;
+      const axiosError = error as AxiosError;
+      recordTelecomLatency({
+        provider: this.providerName,
+        operation: "sendBatchPayout",
+        durationMs,
+        success: false,
+        statusCode: axiosError?.response?.status,
+        endpoint: "/disbursement/v2_0/batch-payout",
+      });
+
+      log.error(
+        { error: error?.message },
+        "MTN MoMo: Batch payout request failed",
+      );
+
+      const results: BatchPayoutResult[] = items.map((item) => ({
+        referenceId: item.referenceId,
+        success: false,
+        error: error?.message || "Batch payout submission failed",
+      }));
+
+      return { success: false, results, error };
     }
   }
 }
