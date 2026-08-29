@@ -7,7 +7,7 @@ import * as fs from "fs";
  * This system consolidates all hardcoded limits, provider configs, and app settings
  * into a single source of truth with environment-based overrides.
  * 
- * Added support for Orange Money Cameroon API endpoints configuration.
+ * NOTE: Orange Money Cameroon configuration placeholders added for future corridor expansion.
  */
 
 // Define the configuration schema
@@ -88,36 +88,86 @@ export const configSchema = convict({
         env: "MTN_CALLBACK_SIGNATURE_HEADER",
       },
     },
-    orangeCameroon: {
+    mtnUganda: {
       minAmount: {
-        doc: "Minimum transaction amount for Orange Cameroon (XAF)",
+        doc: "Minimum transaction amount for MTN Uganda (UGX)",
         format: "nat",
-        default: 100,
-        env: "ORANGE_CAMEROON_MIN_AMOUNT",
+        default: 500,
+        env: "MTN_UG_MIN_AMOUNT",
       },
       maxAmount: {
-        doc: "Maximum transaction amount for Orange Cameroon (XAF)",
+        doc: "Maximum transaction amount for MTN Uganda (UGX)",
         format: "nat",
-        default: 500000,
-        env: "ORANGE_CAMEROON_MAX_AMOUNT",
+        default: 5000000,
+        env: "MTN_UG_MAX_AMOUNT",
       },
       baseUrl: {
-        doc: "Base URL for Orange Cameroon API",
+        doc: "Base URL for MTN Uganda MoMo API",
         format: String,
-        default: "https://api.orange.com",
-        env: "ORANGE_CAMEROON_BASE_URL",
+        default: "https://sandbox.momodeveloper.mtn.com",
+        env: "MTN_UG_BASE_URL",
+      },
+      environment: {
+        doc: "MTN Uganda API Environment (sandbox or mtnuganda)",
+        format: String,
+        default: "sandbox",
+        env: "MTN_UG_ENVIRONMENT",
+      },
+      subscriptionKey: {
+        doc: "Subscription key for the MTN Uganda Disbursement API",
+        format: String,
+        default: "",
+        env: "MTN_UG_DISBURSEMENT_SUB_KEY",
+      },
+      apiUser: {
+        doc: "UUID generated for MTN Uganda API User",
+        format: String,
+        default: "",
+        env: "MTN_UG_API_USER",
       },
       apiKey: {
-        doc: "API Key for Orange Cameroon",
+        doc: "API Key generated during MTN Uganda provisioning",
         format: String,
         default: "",
-        env: "ORANGE_CAMEROON_API_KEY",
+        env: "MTN_UG_API_KEY",
       },
-      apiSecret: {
-        doc: "API Secret for Orange Cameroon",
+      currency: {
+        doc: "Currency code for MTN Uganda",
+        format: String,
+        default: "UGX",
+        env: "MTN_UG_CURRENCY",
+      },
+    },
+    moovCoteDivoire: {
+      minAmount: {
+        doc: "Minimum transaction amount for Moov Côte d'Ivoire (XOF)",
+        format: "nat",
+        default: 100,
+        env: "MOOV_CI_MIN_AMOUNT",
+      },
+      maxAmount: {
+        doc: "Maximum transaction amount for Moov Côte d'Ivoire (XOF)",
+        format: "nat",
+        default: 1000000,
+        env: "MOOV_CI_MAX_AMOUNT",
+      },
+      baseUrl: {
+        doc: "Base URL for the Moov Côte d'Ivoire API",
         format: String,
         default: "",
-        env: "ORANGE_CAMEROON_API_SECRET",
+        env: "MOOV_CI_BASE_URL",
+      },
+      authPath: {
+        doc: "Path for acquiring a Moov Côte d'Ivoire access token",
+        format: String,
+        default: "/oauth/token",
+        env: "MOOV_CI_AUTH_PATH",
+      },
+      depositPushPath: {
+        doc: "Path for triggering a Moov Côte d'Ivoire deposit push",
+        format: String,
+        default: "/v1/push",
+        env: "MOOV_CI_DEPOSIT_PUSH_PATH",
       },
     }
   }
