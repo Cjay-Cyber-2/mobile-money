@@ -20,7 +20,6 @@ import { UserModel } from "../models/users";
 import { EmailService } from "../services/email";
 import { withRetry } from "../services/retry";
 import { notifyTransactionWebhook, WebhookService } from "../services/webhook";
-import { smsService } from "../services/sms";
 import { notificationRouter } from "../services/notificationRouter";
 import { pushNotificationService } from "../services/push";
 import { capturePersistentFailure } from "./dlq";
@@ -328,6 +327,45 @@ async function processTransaction(
   // Receiver is the mobile money account holder identified by their phone number
   const receiverName = phoneNumber;
 
+  const stellarResult = await withRetry(() => {
+    // Use high-throughput pool service when available; falls back to single-account mode
+    const issuerSecret = process.env.STELLAR_ISSUER_SECRET?.trim();
+    if (highThroughputService.isServiceInitialized() && issuerSecret) {
+      const issuerKp = require("@stellar/stellar-sdk").Keypair.fromSecret(issuerSecret);
+      return highThroughputService
+        .submitPayment({
+          sourceAccount: issuerKp.publicKey(),
+          sourceSecret: issuerSecret,
+          destination: stellarAddress,
+          asset: "native",
+          amount: String(amount),
+        })
+        .then((r) => ({ hash: r.hash, submittedAt: new Date() }));
+    }
+    return stellarService.sendPayment(
+      stellarAddress,
+      amount,
+      senderName,
+      receiverName,
+    );
+  }, retryConfig);
+
+  // Store Stellar transaction details in metadata
+  if (stellarResult.hash) {
+    const currentMetadata =
+      (await transactionModel.findById(transactionId))?.metadata || {};
+    const updatedMetadata = {
+      ...currentMetadata,
+      stellar: {
+        transactionHash: stellarResult.hash,
+        submittedAt: stellarResult.submittedAt?.toISOString(),
+        feeBumps: [],
+      },
+    };
+    await transactionModel.updateMetadata(transactionId, updatedMetadata);
+  }
+
+  await updateProgress(transactionId, 90);
   const sendTxnSms = async (
     kind: "transaction_completed" | "transaction_failed",
     errorMessage?: string,
@@ -559,11 +597,6 @@ async function processTransaction(
       transactionId,
       TransactionStatus.Failed,
     );
-    await notifyTransactionWebhook(transactionId, "transaction.failed", {
-      transactionModel: transactionModel as any,
-      webhookService,
-    });
-
     const transaction = await transactionModel.findById(transactionId);
     if (transaction) {
       await notificationRouter.routeTransactionNotification(
@@ -572,6 +605,11 @@ async function processTransaction(
         getErrorMessage(error),
       );
     }
+
+    await notifyTransactionWebhook(transactionId, "transaction.failed", {
+      transactionModel: transactionModel as any,
+      webhookService,
+    });
 
     // Fan-out event
     await rabbitMQManager.publish(
