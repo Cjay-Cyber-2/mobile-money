@@ -334,6 +334,83 @@ export class RateController {
   getAirtelFeeTiers = (_req: Request, res: Response): void => {
     res.json({ success: true, data: { tiers: AIRTEL_FEE_TIERS } });
   };
+
+  /**
+   * POST /api/rates/path-payment/quote
+   *
+   * Get a quote for a Stellar path payment that converts between assets.
+   * Queries Horizon for the optimal conversion route and applies slippage protection.
+   *
+   * Request body:
+   *   {
+   *     sourceAsset: { code: string, issuer: string } | "native",
+   *     sourceAmount: string,
+   *     destAsset: { code: string, issuer: string } | "native",
+   *     destinationAccount: string,
+   *     slippageBps?: number  // default 100 (1%)
+   *   }
+   *
+   * Response:
+   *   {
+   *     success: true,
+   *     data: {
+   *       sourceAsset, sourceAmount, destinationAsset, destinationAmount,
+   *       path: [...], estimatedRate, slippageTolerance
+   *     }
+   *   }
+   */
+  getPathPaymentQuote = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { sourceAsset, sourceAmount, destAsset, destinationAccount, slippageBps } = req.body;
+
+      if (!sourceAsset || !sourceAmount || !destAsset || !destinationAccount) {
+        res.status(400).json({
+          success: false,
+          error: "Missing required fields: sourceAsset, sourceAmount, destAsset, destinationAccount",
+        });
+        return;
+      }
+
+      const { getPathPaymentService } = await import("../services/stellar/payments.js");
+      const { Asset } = await import("@stellar/stellar-sdk");
+
+      const pathService = getPathPaymentService();
+
+      // Parse assets
+      const sendAsset = sourceAsset === "native" || sourceAsset === "XLM"
+        ? Asset.native()
+        : new Asset(sourceAsset.code, sourceAsset.issuer);
+
+      const receiveAsset = destAsset === "native" || destAsset === "XLM"
+        ? Asset.native()
+        : new Asset(destAsset.code, destAsset.issuer);
+
+      const quote = await pathService.getPathPaymentQuote(
+        sendAsset,
+        sourceAmount,
+        receiveAsset,
+        destinationAccount,
+        slippageBps || 100,
+      );
+
+      if (!quote) {
+        res.status(404).json({
+          success: false,
+          error: "No payment path found for this asset pair",
+        });
+        return;
+      }
+
+      res.json({ success: true, data: quote });
+    } catch (err) {
+      logger.error({ err }, "[RateController] Path payment quote failed");
+      res.status(500).json({
+        success: false,
+        error: "Failed to get path payment quote",
+        message: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  };
 }
 
 export const rateController = new RateController();
