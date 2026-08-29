@@ -18,8 +18,11 @@ import {
   createUser,
   getUserPermissions,
   getUserByPhoneNumber,
+  getUserById,
   User,
 } from "../services/userService";
+import { smsService } from "../services/sms";
+import { translate } from "../utils/i18n";
 import { getLockoutStatus, recordFailedAttempt } from "../auth/lockout";
 import { verifyTOTPToken, verifyBackupCode, is2FAEnabled } from "../auth/2fa";
 import { evaluateAdminLoginAnomaly } from "../services/loginAnomaly";
@@ -48,6 +51,8 @@ import {
 } from "../services/deviceVerification";
 import { extractFingerprint } from "../middleware/fingerprint";
 import { getCurrentRequestIp } from "../services/loginAnomaly";
+import { trackLoginSession } from "../services/userSessionTracking";
+import { userSessionModel } from "../models/userSession";
 
 const emailService = new EmailService();
 
@@ -252,8 +257,16 @@ authRoutes.post(
             // Mark verification as pending for this user
             await setVerificationPending(user.id, deviceCheck.verificationId);
 
-            // In production, send OTP via email/SMS
-            // For now, return it in response for testing
+            // Send OTP via SMS
+            try {
+              const locale = "en";
+              const message = translate("sms.otp", locale, { otp });
+              await smsService.sendToPhone(user.phone_number, message);
+              logger.info({ userId: user.id, verificationId: deviceCheck.verificationId }, "Device verification OTP sent via SMS");
+            } catch (smsErr) {
+              logger.error({ smsErr, userId: user.id }, "Failed to send device verification OTP SMS");
+            }
+
             logger.info(
               {
                 userId: user.id,
@@ -290,6 +303,17 @@ authRoutes.post(
       const token = generateToken(payload);
       const refreshToken = await generateRefreshToken(user.id);
       const permissions = await getUserPermissions(user.id);
+
+      // Record the session (device + geo-location) — best-effort, must not
+      // delay or block the login response.
+      void trackLoginSession({
+        userId: user.id,
+        fingerprint,
+        ipAddress,
+        userAgent: Array.isArray(req.headers["user-agent"])
+          ? (req.headers["user-agent"][0] ?? null)
+          : (req.headers["user-agent"] ?? null),
+      });
 
       res.json({
         message: "Login successful",
@@ -381,6 +405,61 @@ authRoutes.delete(
   "/tokens/:token_id/:family_id",
   authenticateToken,
   tokenController.revoke,
+);
+
+/**
+ * GET /api/auth/sessions
+ *
+ * List the authenticated user's active sessions, with device fingerprint
+ * and resolved geo-location metadata.
+ */
+authRoutes.get(
+  "/sessions",
+  authenticateToken,
+  async (req: Request, res: Response) => {
+    const userId = req.jwtUser?.userId;
+    if (!userId) {
+      throw createError(ERROR_CODES.UNAUTHORIZED, "Unauthorized", {
+        error: "Unauthorized",
+      });
+    }
+
+    const sessions = await userSessionModel.getActiveSessionsForUser(userId);
+    res.json({ sessions });
+  },
+);
+
+/**
+ * DELETE /api/auth/sessions/:session_id
+ *
+ * Revoke a specific active session belonging to the authenticated user.
+ */
+authRoutes.delete(
+  "/sessions/:session_id",
+  authenticateToken,
+  async (req: Request, res: Response) => {
+    const userId = req.jwtUser?.userId;
+    if (!userId) {
+      throw createError(ERROR_CODES.UNAUTHORIZED, "Unauthorized", {
+        error: "Unauthorized",
+      });
+    }
+
+    const revoked = await userSessionModel.revokeSession(
+      req.params.session_id,
+      userId,
+    );
+
+    if (!revoked) {
+      throw createError(
+        ERROR_CODES.NOT_FOUND,
+        "Session not found or already revoked",
+        { error: "Not found" },
+      );
+    }
+
+    res.json({ revoked: true });
+  },
 );
 
 /**
@@ -655,6 +734,20 @@ authRoutes.post(
             error: "Code generation failed",
           },
         );
+      }
+
+      // Fetch user to get their phone number
+      const user = await getUserById(payload.userId);
+      if (user) {
+        // Send OTP via SMS
+        try {
+          const locale = "en";
+          const message = translate("sms.otp", locale, { otp });
+          await smsService.sendToPhone(user.phone_number, message);
+          logger.info({ userId: payload.userId, verificationId }, "Verification OTP resent via SMS");
+        } catch (smsErr) {
+          logger.error({ smsErr, userId: payload.userId }, "Failed to resend verification OTP SMS");
+        }
       }
 
       logger.info(

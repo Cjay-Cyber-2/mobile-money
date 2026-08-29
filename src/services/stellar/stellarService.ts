@@ -82,9 +82,14 @@ export class StellarService {
   private async getNetworkBaseFee(): Promise<number> {
     try {
       if (this.isMockMode) return 100;
-      return await this.server.fetchBaseFee();
+      const feeStats = await this.server.feeStats();
+      return Number(feeStats.fee_charged?.p90 || feeStats.last_ledger_base_fee || 100);
     } catch {
-      return 100; // default base fee
+      try {
+        return await this.server.fetchBaseFee();
+      } catch {
+        return 100; // default base fee
+      }
     }
   }
 
@@ -99,12 +104,14 @@ export class StellarService {
     }
 
     try {
+      let timeoutId: NodeJS.Timeout;
       const callPromise = this.server.fetchBaseFee();
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Horizon ping timeout")), timeoutMs),
-      );
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error("Horizon ping timeout")), timeoutMs);
+      });
 
       await Promise.race([callPromise, timeoutPromise]);
+      clearTimeout(timeoutId!);
     } catch (err) {
       console.error(
         "Horizon server unreachable:",

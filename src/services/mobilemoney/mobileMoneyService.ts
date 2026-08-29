@@ -61,6 +61,7 @@ const {
 const SENEGAL_PHONE_REGEX = /^\+221\d{9}$/;
 const CAMEROON_PHONE_REGEX = /^\+237\d{9}$/;
 const UGANDA_PHONE_REGEX = /^\+256\d{9}$/;
+const KENYA_PHONE_REGEX = /^\+254\d{9}$/;
 
 export function isValidSenegalPhoneNumber(phoneNumber: string): boolean {
   return SENEGAL_PHONE_REGEX.test(phoneNumber.trim());
@@ -72,6 +73,10 @@ export function isValidCameroonPhoneNumber(phoneNumber: string): boolean {
 
 export function isValidUgandaPhoneNumber(phoneNumber: string): boolean {
   return UGANDA_PHONE_REGEX.test(phoneNumber.trim());
+}
+
+export function isValidKenyaPhoneNumber(phoneNumber: string): boolean {
+  return KENYA_PHONE_REGEX.test(phoneNumber.trim());
 }
 
 function isSenegalPhoneNumberCandidate(phoneNumber: string): boolean {
@@ -90,6 +95,12 @@ function isUgandaPhoneNumberCandidate(phoneNumber: string): boolean {
   const trimmed = phoneNumber.trim();
   const digits = trimmed.replace(/\D/g, "");
   return trimmed.startsWith("+256") || digits.startsWith("256");
+}
+
+function isKenyaPhoneNumberCandidate(phoneNumber: string): boolean {
+  const trimmed = phoneNumber.trim();
+  const digits = trimmed.replace(/\D/g, "");
+  return trimmed.startsWith("+254") || digits.startsWith("254");
 }
 
 function assertSupportedPhoneNumberFormat(phoneNumber: string): void {
@@ -118,6 +129,15 @@ function assertSupportedPhoneNumberFormat(phoneNumber: string): void {
     throw createError(
       ERROR_CODES.INVALID_PHONE_FORMAT,
       "Invalid Uganda phone number format. Use +256 followed by 9 digits.",
+    );
+  }
+  if (
+    isKenyaPhoneNumberCandidate(phoneNumber) &&
+    !isValidKenyaPhoneNumber(phoneNumber)
+  ) {
+    throw createError(
+      ERROR_CODES.INVALID_PHONE_FORMAT,
+      "Invalid Kenya phone number format. Use +254 followed by 9 digits.",
     );
   }
 }

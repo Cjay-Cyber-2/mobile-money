@@ -134,6 +134,13 @@ const activeTransactionsPerAccount = new Map<string, number>();
 // Configuration
 // ============================================================================
 
+// Well-known testnet issuers, used as defaults when an env override is not
+// set. A mainnet deployment must override these via env vars.
+const DEFAULT_TESTNET_USDC_ISSUER =
+  "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
+const DEFAULT_TESTNET_EURC_ISSUER =
+  "GC5GIOFB4CTFDMYD37EQE7O5D6HKAYD73BXHYEG27KFONBURSTLPQGLD";
+
 export const getSep24Config = () => ({
   webAuthDomain:
     process.env.STELLAR_WEB_AUTH_DOMAIN || "https://api.mobilemoney.com",
@@ -153,6 +160,36 @@ export const getSep24Config = () => ({
       sep24_enabled: true,
       min_amount: 1,
       max_amount: 1000000,
+    } as Sep24Asset,
+    USDC: {
+      asset_code: "USDC",
+      asset_issuer:
+        process.env.SEP38_USDC_ISSUER ||
+        process.env.STELLAR_ASSET_ISSUER ||
+        DEFAULT_TESTNET_USDC_ISSUER,
+      sep6_enabled: true,
+      deposits_enabled: true,
+      withdrawals_enabled: true,
+      transfer_server:
+        process.env.STELLAR_HORIZON_URL ||
+        "https://horizon-testnet.stellar.org",
+      sep24_enabled: true,
+      min_amount: 1,
+      max_amount: 100000,
+    } as Sep24Asset,
+    EURC: {
+      asset_code: "EURC",
+      asset_issuer:
+        process.env.SEP38_EURC_ISSUER || DEFAULT_TESTNET_EURC_ISSUER,
+      sep6_enabled: true,
+      deposits_enabled: true,
+      withdrawals_enabled: true,
+      transfer_server:
+        process.env.STELLAR_HORIZON_URL ||
+        "https://horizon-testnet.stellar.org",
+      sep24_enabled: true,
+      min_amount: 1,
+      max_amount: 100000,
     } as Sep24Asset,
   } as Record<string, Sep24Asset>,
   features: {

@@ -53,6 +53,7 @@ import { ProviderConfigCacheInvalidation } from "../services/cacheAside";
 import { resetCircuitBreakerForProvider } from "../utils/circuitBreaker";
 import { ERROR_CODES } from "../constants/errorCodes";
 import { createError } from "../middleware/errorHandler";
+import { AuditLogFilter, AuditLogModel } from "../models/auditLog";
 
 import adminControllerRouter from "../controllers/adminController";
 
@@ -129,6 +130,7 @@ const MAX_BULK_IDS = 100;
 const users: User[] = [];
 const transactionModel = new TransactionModel();
 const complianceDocumentModel = new ComplianceDocumentModel();
+const auditLogModel = new AuditLogModel();
 
 const isAdminRole = (role?: string) =>
   role === "admin" || role === "super-admin";
@@ -229,6 +231,84 @@ const paginate = <T>(data: T[], page: number, limit: number) => {
   };
 };
 
+const parseAuditLogQuery = (req: Request) => {
+  const page = Number.parseInt(String(req.query.page ?? "1"), 10);
+  const limit = Number.parseInt(String(req.query.limit ?? "50"), 10);
+
+  if (!Number.isInteger(page) || page < 1) {
+    throw createError(ERROR_CODES.INVALID_INPUT, "page must be a positive integer");
+  }
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
+    throw createError(ERROR_CODES.INVALID_INPUT, "limit must be an integer between 1 and 200");
+  }
+
+  const filter: AuditLogFilter = { limit, offset: (page - 1) * limit };
+  for (const key of ["adminId", "action", "resource", "resourceId"] as const) {
+    const value = req.query[key];
+    if (typeof value === "string" && value.trim()) {
+      filter[key] = value.trim();
+    }
+  }
+
+  return { page, limit, filter };
+};
+
+router.get(
+  "/audit-logs",
+  requireAdmin,
+  logAdminAction("LIST_AUDIT_LOGS"),
+  async (req: Request, res: Response) => {
+    try {
+      const { page, limit, filter } = parseAuditLogQuery(req);
+      const [data, total] = await Promise.all([
+        auditLogModel.list(filter),
+        auditLogModel.count(filter),
+      ]);
+
+      res.json({
+        data,
+        pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      });
+    } catch (error) {
+      if ((error as { statusCode?: number }).statusCode) throw error;
+      logger.error("Error listing audit logs:", error);
+      throw createError(ERROR_CODES.INTERNAL_ERROR, "Failed to list audit logs");
+    }
+  },
+);
+
+router.get(
+  "/audit-logs/view",
+  requireAdmin,
+  logAdminAction("VIEW_AUDIT_LOGS"),
+  (_req: Request, res: Response) => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audit Trail</title><style>
+*{box-sizing:border-box}body{margin:0;padding:24px;font:14px system-ui,sans-serif;background:#f6f7f9;color:#17202a}
+main{max-width:1400px;margin:auto}h1{font-size:24px;margin:0 0 18px}form{display:grid;grid-template-columns:repeat(4,1fr) auto;gap:10px;margin-bottom:18px}
+input,button{font:inherit;padding:9px 10px;border:1px solid #c9d1d9;border-radius:4px;background:white}button{background:#155eef;color:white;border-color:#155eef;cursor:pointer}
+.table-wrap{overflow:auto;background:white;border:1px solid #d8dee4}table{width:100%;border-collapse:collapse;min-width:900px}th,td{text-align:left;vertical-align:top;padding:10px;border-bottom:1px solid #eaeef2}th{background:#eef2f6;font-size:12px;text-transform:uppercase}td{white-space:pre-wrap}td.diff{max-width:360px;word-break:break-word;font-family:ui-monospace,monospace;font-size:12px}#status{margin:12px 0;color:#586069}.pager{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+@media(max-width:800px){body{padding:14px}form{grid-template-columns:1fr 1fr}.table-wrap{margin:0 -14px;border-left:0;border-right:0}}
+</style></head><body><main><h1>Audit Trail</h1>
+<form id="filters"><input name="adminId" placeholder="Admin ID"><input name="action" placeholder="Action"><input name="resource" placeholder="Resource"><input name="resourceId" placeholder="Resource ID"><button type="submit">Filter</button></form>
+<div id="status">Loading...</div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Admin</th><th>Action</th><th>Resource</th><th>Resource ID</th><th>IP address</th><th>User agent</th><th>Change</th></tr></thead><tbody id="rows"></tbody></table></div>
+<div class="pager"><button id="previous" type="button">Previous</button><span id="page"></span><button id="next" type="button">Next</button></div></main>
+<script>
+const form=document.getElementById('filters'), rows=document.getElementById('rows'), status=document.getElementById('status'), pageLabel=document.getElementById('page');
+let page=1, totalPages=1;
+function cell(row,value, className){const el=document.createElement(row);el.textContent=value ?? '';if(className)el.className=className;return el;}
+async function load(){const params=new URLSearchParams(new FormData(form));params.set('page',page);params.set('limit','50');status.textContent='Loading...';
+try{const response=await fetch('/api/admin/audit-logs?'+params,{credentials:'include'});if(!response.ok)throw new Error('HTTP '+response.status);const result=await response.json();rows.replaceChildren();
+result.data.forEach(log=>{const tr=document.createElement('tr');[new Date(log.createdAt).toLocaleString(),log.adminId,log.action,log.resource,log.resourceId,log.ipAddress,log.userAgent].forEach(value=>tr.appendChild(cell('td',value)));tr.appendChild(cell('td',JSON.stringify(log.diff,null,2),'diff'));rows.appendChild(tr)});
+totalPages=result.pagination.totalPages;pageLabel.textContent='Page '+result.pagination.page+' of '+Math.max(totalPages,1)+' ('+result.pagination.total+' entries)';status.textContent=result.data.length?'':'No audit entries found';document.getElementById('previous').disabled=page<=1;document.getElementById('next').disabled=page>=totalPages;
+}catch(error){status.textContent='Unable to load audit trail';rows.replaceChildren()}}
+form.addEventListener('submit',event=>{event.preventDefault();page=1;load()});document.getElementById('previous').onclick=()=>{if(page>1){page--;load()}};document.getElementById('next').onclick=()=>{if(page<totalPages){page++;load()}};load();
+</script></body></html>`);
+  },
+);
+
 /**
  * =========================
  * DYNAMIC SYSTEM CONFIGURATION
@@ -242,6 +322,9 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const category = req.query.category as string | undefined;
+      const { systemConfigService } = await import(
+        "../services/systemConfigService.js"
+      );
       const configs = await systemConfigService.getAll(category);
 
       res.json({
@@ -262,6 +345,9 @@ router.get(
   logAdminAction("GET_SYSTEM_CONFIG"),
   async (req: Request, res: Response) => {
     try {
+      const { systemConfigService } = await import(
+        "../services/systemConfigService.js"
+      );
       const entry = await systemConfigService.get(req.params.key);
 
       if (!entry) {
@@ -305,6 +391,9 @@ router.put(
         );
       }
 
+      const { systemConfigService } = await import(
+        "../services/systemConfigService.js"
+      );
       const entry = await systemConfigService.upsert({
         key: key.trim(),
         value: String(value),
@@ -338,6 +427,9 @@ router.delete(
         throw createError(ERROR_CODES.UNAUTHORIZED, "Authentication required");
       }
 
+      const { systemConfigService } = await import(
+        "../services/systemConfigService.js"
+      );
       const deleted = await systemConfigService.delete(req.params.key);
 
       if (!deleted) {
@@ -389,6 +481,9 @@ router.patch(
         }
       }
 
+      const { systemConfigService } = await import(
+        "../services/systemConfigService.js"
+      );
       const results = await systemConfigService.bulkUpsert(
         configs.map((c: any) => ({
           key: c.key.trim(),

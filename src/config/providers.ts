@@ -6,6 +6,7 @@ export enum MobileMoneyProvider {
   ORANGE = "orange",
   ORANGE_MADAGASCAR = "orange_madagascar",
   ORANGE_GUINEA = "orange_guinea",
+  WAVE_SENEGAL = "wave_senegal",
   SMS_PORTAL = "sms_portal",
 }
 
@@ -20,6 +21,7 @@ export interface ProviderLimitsConfig {
   [MobileMoneyProvider.ORANGE]: ProviderLimits;
   [MobileMoneyProvider.ORANGE_MADAGASCAR]: ProviderLimits;
   [MobileMoneyProvider.ORANGE_GUINEA]: ProviderLimits;
+  [MobileMoneyProvider.WAVE_SENEGAL]: ProviderLimits;
   [MobileMoneyProvider.SMS_PORTAL]: ProviderLimits;
 }
 
@@ -50,6 +52,10 @@ export function getProviderLimitsConfig(): ProviderLimitsConfig {
       minAmount: providers.orangeGuinea.minAmount,
       maxAmount: providers.orangeGuinea.maxAmount,
     },
+    [MobileMoneyProvider.WAVE_SENEGAL]: {
+      minAmount: providers.waveSenegal.minAmount,
+      maxAmount: providers.waveSenegal.maxAmount,
+    },
     [MobileMoneyProvider.SMS_PORTAL]: {
       minAmount: providers.smsPortal.minAmount,
       maxAmount: providers.smsPortal.maxAmount,
@@ -66,6 +72,10 @@ export const DEFAULT_PROVIDER_LIMITS: ProviderLimitsConfig = {
     maxAmount: 5000000,
   },
   [MobileMoneyProvider.ORANGE_GUINEA]: {
+    minAmount: 100,
+    maxAmount: 5000000,
+  },
+  [MobileMoneyProvider.WAVE_SENEGAL]: {
     minAmount: 100,
     maxAmount: 5000000,
   },
@@ -138,6 +148,7 @@ function validateLimitsConfig(): void {
     MobileMoneyProvider.ORANGE,
     MobileMoneyProvider.ORANGE_MADAGASCAR,
     MobileMoneyProvider.ORANGE_GUINEA,
+    MobileMoneyProvider.WAVE_SENEGAL,
     MobileMoneyProvider.SMS_PORTAL,
   ];
 

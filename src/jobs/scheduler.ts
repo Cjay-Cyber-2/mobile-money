@@ -20,6 +20,7 @@ import { runCrossChainMonitorJob } from "./crossChainMonitorJob";
 import { runDailySettlementJob } from "./dailySettlementJob";
 import { runDailyProviderReconciliation } from "./providerReconciliationJob";
 import { runReconciliationJob } from "./reconciliationJob";
+import { runLedgerReconciliationJob } from "./ledgerReconciliationJob";
 import { runDatabaseBackupJob } from "./databaseBackupJob";
 import { runDatabaseBackupVerifyJob } from "./databaseBackupVerifyJob";
 import { INDEX_REINDEX_CRON, INDEX_REINDEX_JOB_ENABLED } from "../config/env";
@@ -157,6 +158,12 @@ const JOBS: JobConfig[] = [
     // Daily at 5:00 AM
     schedule: process.env.RECONCILIATION_CRON || "0 5 * * *",
     handler: runReconciliationJob,
+  },
+  {
+    name: "ledger-reconciliation",
+    // Every 15 minutes - checks internal double-entry ledger consistency
+    schedule: process.env.LEDGER_RECONCILIATION_CRON || "*/15 * * * *",
+    handler: runLedgerReconciliationJob,
   },
   {
     name: "database-backup",

@@ -277,6 +277,44 @@ export const configSchema = convict({
         default: 5000000,
         env: "ORANGE_GUINEA_MAX_AMOUNT",
       },
+      callbackSecret: {
+        doc: "Orange Guinea callback HMAC secret for verifying incoming callbacks",
+        format: String,
+        default: "",
+        env: "ORANGE_GUINEA_CALLBACK_SECRET",
+      },
+      callbackSignatureHeader: {
+        doc: "Header used by Orange Guinea for callback signature verification",
+        format: String,
+        default: "X-Callback-Signature",
+        env: "ORANGE_GUINEA_CALLBACK_SIGNATURE_HEADER",
+      },
+    },
+    waveSenegal: {
+      minAmount: {
+        doc: "Minimum transaction amount for Wave Senegal (XOF)",
+        format: "nat",
+        default: 100,
+        env: "WAVE_SENEGAL_MIN_AMOUNT",
+      },
+      maxAmount: {
+        doc: "Maximum transaction amount for Wave Senegal (XOF)",
+        format: "nat",
+        default: 5000000,
+        env: "WAVE_SENEGAL_MAX_AMOUNT",
+      },
+      currency: {
+        doc: "Settlement currency for Wave Senegal",
+        format: ["XOF"],
+        default: "XOF",
+        env: "WAVE_CURRENCY",
+      },
+      webhookSecret: {
+        doc: "Wave Senegal webhook HMAC secret for verifying incoming events",
+        format: String,
+        default: "",
+        env: "WAVE_WEBHOOK_SECRET",
+      },
     },
     smsPortal: {
       minAmount: {

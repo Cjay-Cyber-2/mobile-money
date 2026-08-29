@@ -22,6 +22,17 @@ export enum TransactionStatus {
   Dispute = "dispute",
   Reversed = "reversed",
   ClawedBack = "clawed_back",
+  /**
+   * A deposit/withdrawal that timed out waiting on an external party (the
+   * mobile money provider, or an anchor's SEP-24 interactive flow) without
+   * ever reaching a terminal completed/failed state at the source. Distinct
+   * from `Failed`: a failure means the provider/anchor actively rejected or
+   * errored the transaction; `Expired` means it never got an answer at all.
+   * See staleTransactionWatchdog.ts (#1793) — a stuck transaction whose
+   * provider status check comes back "pending"/"unknown" (not an actual
+   * failure report) is expired, not failed.
+   */
+  Expired = "expired",
 }
 
 export interface Transaction {
@@ -395,19 +406,89 @@ export class TransactionModel {
     return mapTransactionRow(res.rows[0]);
   }
 
-  async updateStatus(id: string, status: TransactionStatus, userId?: string) {
-    let q = `UPDATE transactions SET status=$1, updated_at=NOW() WHERE id=$2`;
-    const params: (string | TransactionStatus)[] = [status, id];
+export const ALLOWED_STATUS_TRANSITIONS: Record<
+  TransactionStatus,
+  TransactionStatus[]
+> = {
+  [TransactionStatus.Pending]: [
+    TransactionStatus.Pending,
+    TransactionStatus.Processing,
+    TransactionStatus.Completed,
+    TransactionStatus.Failed,
+    TransactionStatus.Cancelled,
+    TransactionStatus.Review,
+  ],
+  [TransactionStatus.Processing]: [
+    TransactionStatus.Processing,
+    TransactionStatus.Completed,
+    TransactionStatus.Failed,
+    TransactionStatus.Cancelled,
+    TransactionStatus.Review,
+    TransactionStatus.Pending,
+  ],
+  [TransactionStatus.Review]: [
+    TransactionStatus.Review,
+    TransactionStatus.Processing,
+    TransactionStatus.Completed,
+    TransactionStatus.Failed,
+    TransactionStatus.Cancelled,
+  ],
+  [TransactionStatus.Completed]: [
+    TransactionStatus.Completed,
+    TransactionStatus.Dispute,
+    TransactionStatus.Reversed,
+    TransactionStatus.ClawedBack,
+  ],
+  [TransactionStatus.Failed]: [
+    TransactionStatus.Failed,
+    TransactionStatus.Review,
+  ],
+  [TransactionStatus.Cancelled]: [
+    TransactionStatus.Cancelled,
+  ],
+  [TransactionStatus.Dispute]: [
+    TransactionStatus.Dispute,
+    TransactionStatus.Completed,
+    TransactionStatus.Reversed,
+    TransactionStatus.ClawedBack,
+    TransactionStatus.Failed,
+  ],
+  [TransactionStatus.Reversed]: [
+    TransactionStatus.Reversed,
+  ],
+  [TransactionStatus.ClawedBack]: [
+    TransactionStatus.ClawedBack,
+  ],
+};
+
+  async updateStatus(
+    id: string,
+    status: TransactionStatus,
+    userId?: string,
+    expectedPreviousStatuses?: TransactionStatus[],
+  ): Promise<boolean> {
+    const validPreviousStatuses =
+      expectedPreviousStatuses ??
+      (Object.keys(ALLOWED_STATUS_TRANSITIONS) as TransactionStatus[]).filter(
+        (prev) => ALLOWED_STATUS_TRANSITIONS[prev]?.includes(status),
+      );
+
+    let q = `UPDATE transactions SET status=$1, updated_at=NOW() WHERE id=$2 AND (status = $1 OR status = ANY($3::varchar[]))`;
+    const params: (string | TransactionStatus | TransactionStatus[])[] = [
+      status,
+      id,
+      validPreviousStatuses,
+    ];
 
     if (userId) {
-      q += ` AND user_id=$3`;
+      q += ` AND user_id=$4`;
       params.push(userId);
     }
 
     q += ` RETURNING user_id, provider, reference_number, updated_at`;
 
     const res = await queryWrite<StatusUpdateRow>(q, params);
-    if (!res.rowCount) return;
+    if (!res.rowCount) return false;
 
     const row = res.rows[0];
 
@@ -446,24 +527,33 @@ export class TransactionModel {
     // ── Publish GraphQL subscription event ──────────────────────────────
     // Publish to both the per-transaction channel (targeted) and the
     // broadcast channel (for clients watching all transactions).
-    const pubsub = getRedisPubSub();
+    try {
+      const pubsub = getRedisPubSub();
 
-    const payload: TransactionUpdatedPayload = {
-      id,
-      referenceNumber: row.reference_number,
-      status,
-      updatedAt: new Date(row.updated_at).toISOString(),
-    };
+      const payload: TransactionUpdatedPayload = {
+        id,
+        referenceNumber: row.reference_number,
+        status,
+        updatedAt: new Date(row.updated_at).toISOString(),
+      };
 
-    await pubsub.publish(transactionChannel(id), payload);
-    await pubsub.publish(SubscriptionChannels.TRANSACTION_UPDATED, payload);
+      await pubsub.publish(transactionChannel(id), payload);
+      await pubsub.publish(SubscriptionChannels.TRANSACTION_UPDATED, payload);
 
-    const ws = WebSocketManager.getInstance();
-    await ws?.broadcastTransactionUpdate({
-      id,
-      status,
-      userId: row.user_id,
-    });
+      const ws = WebSocketManager.getInstance();
+      await ws?.broadcastTransactionUpdate({
+        id,
+        status,
+        userId: row.user_id,
+      });
+    } catch (pubsubErr) {
+      console.warn(
+        "[transaction] Failed to publish status update events",
+        pubsubErr,
+      );
+    }
+
+    return true;
   }
 
   async searchByNotes(query: string): Promise<Transaction[]> {

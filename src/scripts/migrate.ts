@@ -269,36 +269,51 @@ async function migrateDryRun(): Promise<void> {
   }
 
   let errors = 0;
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    for (const migration of pending) {
-      const sql = fs.readFileSync(migration.upPath, "utf-8");
+  const appliedInDryRun: typeof pending = [];
+
+  for (const migration of pending) {
+    const sql = fs.readFileSync(migration.upPath, "utf-8");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(sql);
+      await client.query(
+        "INSERT INTO schema_migrations (version) VALUES ($1)",
+        [migration.version],
+      );
+      await client.query("COMMIT");
+      appliedInDryRun.push(migration);
+      console.log(`  [VALID] ${migration.name}`);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      printError(`  [INVALID] ${migration.name}:`, err);
+      errors++;
+      client.release();
+      break;
+    } finally {
+      client.release();
+    }
+  }
+
+  // Roll back all migrations applied during dry-run in reverse order if downPath exists
+  for (const migration of appliedInDryRun.reverse()) {
+    if (migration.downPath) {
+      const client = await pool.connect();
       try {
-        await client.query("SAVEPOINT migration_sp");
+        const sql = fs.readFileSync(migration.downPath, "utf-8");
+        await client.query("BEGIN");
         await client.query(sql);
-        try {
-          await client.query("RELEASE SAVEPOINT migration_sp");
-        } catch (_) {
-          // Ignore if transaction block state changed
-        }
-        console.log(`  [VALID] ${migration.name}`);
-      } catch (err) {
-        try {
-          await client.query("ROLLBACK TO SAVEPOINT migration_sp");
-        } catch (_) {
-          // Fallback if transaction block was terminated
-        }
-        printError(`  [INVALID] ${migration.name}:`, err);
-        errors++;
-        break;
+        await client.query(
+          "DELETE FROM schema_migrations WHERE version = $1",
+          [migration.version],
+        );
+        await client.query("COMMIT");
+      } catch (_) {
+        await client.query("ROLLBACK");
+      } finally {
+        client.release();
       }
     }
-  } finally {
-    try {
-      await client.query("ROLLBACK");
-    } catch (_) {}
-    client.release();
   }
 
   if (errors > 0) {

@@ -32,7 +32,7 @@ export const NATS_SYNC_CONSUMER_GROUP =
   process.env.NATS_CONSUMER_GROUP ||
   "accounting-sync-group";
 
-type DatadogSpan = ReturnType<typeof tracer.startSpan>;
+type DatadogSpan = any;
 
 function tagSyncSpan(
   span: DatadogSpan,
@@ -167,7 +167,7 @@ export async function processSyncJob(
   job: Job<SyncJobData, SyncJobResult>,
 ): Promise<SyncJobResult> {
   const { syncId, transactionId, platform, payload } = job.data;
-  const span = tracer.startSpan("mobile_money.queue.sync.process");
+  const span: any = tracer.startSpan("mobile_money.queue.sync.process");
   const logFields = spanLogFields(span);
   const startedAt = Date.now();
   let spanStatus: "success" | "failed" = "failed";
@@ -337,12 +337,12 @@ export async function processSyncJob(
  * and swallows permanent errors after logging (triggering an ack to avoid
  * infinite redelivery of unprocessable messages).
  */
-async function processNatsSyncMessage(
+export async function processNatsSyncMessage(
   data: SyncJobData,
   msg: JsMsg,
 ): Promise<void> {
   const { syncId, transactionId, platform } = data;
-  const span = tracer.startSpan("mobile_money.queue.sync.nats.process");
+  const span: any = tracer.startSpan("mobile_money.queue.sync.nats.process");
   const logFields = spanLogFields(span);
   const startedAt = Date.now();
   let spanStatus: "success" | "failed" = "failed";
@@ -472,7 +472,7 @@ export const syncWorker = new Worker<SyncJobData, SyncJobResult>(
 // without duplicate processing.
 // ---------------------------------------------------------------------------
 
-if (NATS_QUEUE_ENABLED) {
+if (process.env.NATS_QUEUE_ENABLED === "true" && natsManager) {
   natsManager
     .consume<SyncJobData>(
       NATS_SYNC_SUBJECT,
@@ -492,7 +492,7 @@ if (NATS_QUEUE_ENABLED) {
 
 export async function closeSyncWorker(): Promise<void> {
   await syncWorker.close();
-  if (NATS_QUEUE_ENABLED) {
+  if (process.env.NATS_QUEUE_ENABLED === "true" && natsManager) {
     await natsManager.close();
   }
 }
