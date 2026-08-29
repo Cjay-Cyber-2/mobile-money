@@ -688,6 +688,7 @@ export const createSep12Router = (db: Pool): Router => {
 
       res.json(customer);
     } catch (error: any) {
+      if (error.statusCode) throw error;
       logger.error("[SEP-12] Error getting customer:", error);
       throw createError(
         ERROR_CODES.INTERNAL_ERROR,
