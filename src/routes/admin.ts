@@ -322,7 +322,7 @@ router.get(
     try {
       const category = req.query.category as string | undefined;
       const { systemConfigService } = await import(
-        "../services/systemConfigService"
+        "../services/systemConfigService.js"
       );
       const configs = await systemConfigService.getAll(category);
 
@@ -345,7 +345,7 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const { systemConfigService } = await import(
-        "../services/systemConfigService"
+        "../services/systemConfigService.js"
       );
       const entry = await systemConfigService.get(req.params.key);
 
@@ -391,7 +391,7 @@ router.put(
       }
 
       const { systemConfigService } = await import(
-        "../services/systemConfigService"
+        "../services/systemConfigService.js"
       );
       const entry = await systemConfigService.upsert({
         key: key.trim(),
@@ -427,7 +427,7 @@ router.delete(
       }
 
       const { systemConfigService } = await import(
-        "../services/systemConfigService"
+        "../services/systemConfigService.js"
       );
       const deleted = await systemConfigService.delete(req.params.key);
 
@@ -481,7 +481,7 @@ router.patch(
       }
 
       const { systemConfigService } = await import(
-        "../services/systemConfigService"
+        "../services/systemConfigService.js"
       );
       const results = await systemConfigService.bulkUpsert(
         configs.map((c: any) => ({

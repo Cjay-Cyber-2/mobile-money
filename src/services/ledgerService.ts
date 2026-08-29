@@ -553,9 +553,12 @@ export class LedgerService {
     accountCode: string,
     asOfDate?: Date,
   ): Promise<number> {
+    // Same DATE-parameter timezone concern as getTrialBalance above —
+    // pass an explicit UTC "YYYY-MM-DD" string, not a raw JS Date.
+    const dateParam = (asOfDate ?? new Date()).toISOString().slice(0, 10);
     const result = await this.pool.query(
       "SELECT get_account_balance($1, $2) as balance",
-      [accountCode, asOfDate || new Date()],
+      [accountCode, dateParam],
     );
     return parseFloat(result.rows[0].balance);
   }
@@ -591,9 +594,18 @@ export class LedgerService {
    * Get trial balance (all account balances at a point in time)
    */
   async getTrialBalance(asOfDate?: Date): Promise<TrialBalance[]> {
+    // get_trial_balance's p_as_of_date parameter is a plain SQL DATE (no
+    // time/timezone component). Passing a JS Date object directly here lets
+    // the pg driver's timezone-sensitive serialization shift the calendar
+    // date by ±1 day depending on the server process's local timezone
+    // offset relative to UTC — especially near midnight. Extracting the
+    // UTC calendar date as an explicit "YYYY-MM-DD" string removes that
+    // ambiguity: the caller's intended calendar date (e.g. CLI --date=)
+    // is always what gets sent, regardless of server timezone.
+    const dateParam = (asOfDate ?? new Date()).toISOString().slice(0, 10);
     const result = await this.pool.query(
       "SELECT * FROM get_trial_balance($1)",
-      [asOfDate || new Date()],
+      [dateParam],
     );
     return result.rows.map((row) => ({
       account_code: row.account_code,

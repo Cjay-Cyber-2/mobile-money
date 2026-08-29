@@ -22,6 +22,17 @@ export enum TransactionStatus {
   Dispute = "dispute",
   Reversed = "reversed",
   ClawedBack = "clawed_back",
+  /**
+   * A deposit/withdrawal that timed out waiting on an external party (the
+   * mobile money provider, or an anchor's SEP-24 interactive flow) without
+   * ever reaching a terminal completed/failed state at the source. Distinct
+   * from `Failed`: a failure means the provider/anchor actively rejected or
+   * errored the transaction; `Expired` means it never got an answer at all.
+   * See staleTransactionWatchdog.ts (#1793) — a stuck transaction whose
+   * provider status check comes back "pending"/"unknown" (not an actual
+   * failure report) is expired, not failed.
+   */
+  Expired = "expired",
 }
 
 export interface Transaction {

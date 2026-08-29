@@ -51,6 +51,12 @@ transactionRoutes.get(
           error: "Transaction not found",
         });
 
+      if (transaction.userId !== req.jwtUser?.userId) {
+        throw createError(ERROR_CODES.FORBIDDEN, "Access denied", {
+          error: "You do not have permission to access this transaction",
+        });
+      }
+
       const pdf = await generateTransactionPdfBuffer(transaction);
 
       res.setHeader("Content-Type", "application/pdf");
@@ -91,6 +97,10 @@ transactionRoutes.get(
       const transaction = await transactionModel.findById(id);
       if (!transaction)
         return res.status(404).json({ error: "Transaction not found" });
+
+      if (transaction.userId !== req.jwtUser?.userId) {
+        return res.status(403).json({ error: "You do not have permission to access this transaction" });
+      }
 
       if (transaction.status !== TransactionStatus.Completed)
         return res.status(400).json({

@@ -366,78 +366,131 @@ async function processTransaction(
   }
 
   await updateProgress(transactionId, 90);
+  const sendTxnSms = async (
+    kind: "transaction_completed" | "transaction_failed",
+    errorMessage?: string,
+  ) => {
+    try {
+      const txRow = await transactionModel.findById(transactionId);
+      if (!txRow?.userId) return;
+
+      const user = await userModel.findById(txRow.userId);
+      if (user?.smsOptOut) {
+        console.log(
+          `[${transactionId}] SMS notifications skipped (User Opted Out)`,
+        );
+        return;
+      }
+
+      const ref = txRow?.referenceNumber ?? transactionId;
+      await smsService.notifyTransactionEvent(phoneNumber, {
+        referenceNumber: ref,
+        type,
+        amount: String(amount),
+        provider,
+        kind,
+        errorMessage,
+      });
+    } catch (smsErr) {
+      log.error({ smsErr }, "SMS notification error");
+    }
+  };
+
   try {
     await updateProgress(transactionId, 10);
+
+    const currentTx = await transactionModel.findById(transactionId);
+    const metadata = currentTx?.metadata || {};
 
     if (type === "deposit") {
       await updateProgress(transactionId, 20);
 
-      const mobileMoneyResult = await withRetry(async () => {
-        const result = await mobileMoneyService.initiatePayment(
-          provider,
-          phoneNumber,
-          amount,
-        );
-        if (!result.success) {
-          throw new Error(getProviderFailureMessage(result));
-        }
-        return result;
-      }, retryConfig);
-
-      // Issue #515: Log provider response time in transaction metadata
-      if (mobileMoneyResult.providerResponseTimeMs !== undefined) {
-        await (transactionModel as any)
-          .patchMetadata(transactionId, {
-            providerResponseTimeTimeMs:
-              mobileMoneyResult.providerResponseTimeMs,
-            providerRespondedAt: new Date().toISOString(),
-          })
-          .catch((err: any) =>
-            log.warn({ err }, "Failed to log provider response time"),
+      // Check if mobile money payment was already initiated or succeeded
+      let mobileMoneyResult = (metadata as any)?.mobileMoney;
+      if (!mobileMoneyResult?.success) {
+        mobileMoneyResult = await withRetry(async () => {
+          const result = await mobileMoneyService.initiatePayment(
+            provider,
+            phoneNumber,
+            amount,
           );
+          if (!result.success) {
+            throw new Error(getProviderFailureMessage(result));
+          }
+          return result;
+        }, retryConfig);
+
+        // Issue #515: Log provider response time in transaction metadata
+        if (mobileMoneyResult.providerResponseTimeMs !== undefined) {
+          await (transactionModel as any)
+            .patchMetadata(transactionId, {
+              mobileMoney: mobileMoneyResult,
+              providerResponseTimeTimeMs:
+                mobileMoneyResult.providerResponseTimeMs,
+              providerRespondedAt: new Date().toISOString(),
+            })
+            .catch((err: any) =>
+              log.warn({ err }, "Failed to log provider response time"),
+            );
+        } else {
+          await (transactionModel as any)
+            .patchMetadata(transactionId, {
+              mobileMoney: mobileMoneyResult,
+            })
+            .catch((err: any) =>
+              log.warn({ err }, "Failed to patch mobileMoney metadata"),
+            );
+        }
       }
 
       await updateProgress(transactionId, 50);
 
-      if (!mobileMoneyResult.success) {
+      if (!mobileMoneyResult?.success) {
         throw new Error(getProviderFailureMessage(mobileMoneyResult));
       }
       await updateProgress(transactionId, 70);
 
-      await withRetry(() => {
-        // Use high-throughput pool service when available; falls back to single-account mode
-        const issuerSecret = process.env.STELLAR_ISSUER_SECRET?.trim();
-        if (highThroughputService.isServiceInitialized() && issuerSecret) {
-          const issuerKp =
-            require("@stellar/stellar-sdk").Keypair.fromSecret(issuerSecret);
-          return highThroughputService.submitPayment({
-            sourceAccount: issuerKp.publicKey(),
-            sourceSecret: issuerSecret,
-            destination: stellarAddress,
-            asset: "native",
-            amount: String(amount),
-          });
-        }
-        return stellarService.sendPayment(
-          stellarAddress,
-          amount,
-          senderName,
-          receiverName,
-        );
-      }, retryConfig);
+      // Idempotency: Check if Stellar payment was already submitted on a previous attempt/retry
+      let stellarResult = (metadata as any)?.stellar;
+      if (!stellarResult?.transactionHash) {
+        const stellarSubmission = await withRetry(() => {
+          // Use high-throughput pool service when available; falls back to single-account mode
+          const issuerSecret = process.env.STELLAR_ISSUER_SECRET?.trim();
+          if (highThroughputService.isServiceInitialized() && issuerSecret) {
+            const issuerKp =
+              require("@stellar/stellar-sdk").Keypair.fromSecret(issuerSecret);
+            return highThroughputService
+              .submitPayment({
+                sourceAccount: issuerKp.publicKey(),
+                sourceSecret: issuerSecret,
+                destination: stellarAddress,
+                asset: "native",
+                amount: String(amount),
+              })
+              .then((r) => ({ hash: r.hash, submittedAt: new Date() }));
+          }
+          return stellarService.sendPayment(
+            stellarAddress,
+            amount,
+            senderName,
+            receiverName,
+          );
+        }, retryConfig);
 
-      if (stellarResult.hash) {
-        const currentMetadata =
-          (await transactionModel.findById(transactionId))?.metadata || {};
-        const updatedMetadata = {
-          ...currentMetadata,
-          stellar: {
-            transactionHash: stellarResult.hash,
-            submittedAt: stellarResult.submittedAt?.toISOString(),
-            feeBumps: [],
-          },
+        stellarResult = {
+          transactionHash: stellarSubmission.hash,
+          submittedAt: (
+            stellarSubmission.submittedAt || new Date()
+          ).toISOString(),
+          feeBumps: [],
         };
-        await transactionModel.updateMetadata(transactionId, updatedMetadata);
+
+        const updatedTx = await transactionModel.findById(transactionId);
+        const currentMeta = updatedTx?.metadata || {};
+        await transactionModel.updateMetadata(transactionId, {
+          ...currentMeta,
+          stellar: stellarResult,
+        });
       }
 
       await updateProgress(transactionId, 90);

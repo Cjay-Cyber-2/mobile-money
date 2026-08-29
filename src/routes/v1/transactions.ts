@@ -120,6 +120,10 @@ transactionRoutesV1.get(
       if (!transaction)
         return res.status(404).json({ error: "Transaction not found" });
 
+      if (transaction.userId !== req.jwtUser?.userId && req.user?.role !== "admin") {
+        return res.status(403).json({ error: "You do not have permission to access this transaction" });
+      }
+
       if (transaction.status !== TransactionStatus.Completed)
         return res.status(400).json({
           error:

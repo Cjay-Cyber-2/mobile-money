@@ -120,6 +120,7 @@ import { layeredCache } from "./services/layeredCache";
 import { ERROR_CODES } from "./constants/errorCodes";
 import { startApolloServer } from "./graphql/server";
 import { applySecurityMiddleware } from "./config/express";
+import { createCorsMiddleware } from "./middleware/cors";
 
 dotenv.config();
 
@@ -454,6 +455,9 @@ app.use("/api/mtn", mtnCallbacksRouter);
 app.use("/api/orange-madagascar", orangeMadagascarCallbacksRouter);
 app.use("/api/orange-guinea", orangeGuineaCallbacksRouter);
 app.use("/api/multisig", multisigCallbacksRouter);
+
+// Apply custom configurable CORS allowlist for admin routes
+app.use("/api/admin", createCorsMiddleware());
 app.use("/api/admin/withdrawals", adminWithdrawalsRouter);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/fees", feesRoutes);
