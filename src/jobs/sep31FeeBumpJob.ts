@@ -138,7 +138,7 @@ async function performSep31FeeBump(
     // Fetch current network base fee and adjust dynamically
     const baseFee = await server
       .feeStats()
-      .then((res) => Number(res.last_ledger_base_fee));
+      .then((res) => Number(res.fee_charged?.p90 || res.last_ledger_base_fee || 100));
     const previousFee =
       sep31Meta.feeBumps?.length > 0
         ? sep31Meta.feeBumps[sep31Meta.feeBumps.length - 1].fee
