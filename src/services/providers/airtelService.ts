@@ -12,13 +12,18 @@ interface AirtelTokenResponse {
 interface AirtelStatusResponse {
   data?: {
     transaction?: {
-      status: string;
+      status?: string;
+      id?: string;
     };
+    status?: string;
   };
   status?: {
-    success: boolean;
-    code: string;
+    success?: boolean;
+    code?: string;
+    result_code?: string;
   };
+  transaction_status?: string;
+  status?: string;
 }
 
 export type AirtelTransactionStatus =
@@ -144,174 +149,37 @@ export class AirtelService extends BaseProvider {
       const durationMs = Date.now() - startTime;
       recordTelecomLatency({
         provider: this.providerName,
-        operation: "getAccessToken",
+        endpoint,
         durationMs,
         success: true,
-        statusCode: response.status,
-        endpoint,
       });
 
       const { access_token, expires_in } = response.data;
       if (!access_token || typeof access_token !== "string") {
-        throw new Error("Airtel token response did not include access_token");
+        throw new Error("Airtel token response missing access_token");
       }
 
-      this.cacheToken(access_token, expires_in);
+      const ttl = typeof expires_in === "number" && !isNaN(expires_in) ? expires_in : 3600;
+      this.setCachedToken(access_token, ttl);
       return access_token;
-    } catch (error: unknown) {
+    } catch (error) {
       const durationMs = Date.now() - startTime;
-      const axiosError = error as AxiosError;
       recordTelecomLatency({
         provider: this.providerName,
-        operation: "getAccessToken",
+        endpoint,
         durationMs,
         success: false,
-        statusCode: axiosError?.response?.status,
-        endpoint,
       });
       throw error;
     }
   }
 
-  async requestPayment(phoneNumber: string, amount: string) {
+  async getTransactionStatus(reference: string): Promise<{ status: AirtelTransactionStatus; raw?: unknown }> {
+    const token = await this.getAccessToken();
+    const endpoint = `/${this.country.toLowerCase()}/standard/v1/payments/${reference}`;
     const startTime = Date.now();
-    const endpoint = "/merchant/v1/payments/";
-    const reference = `AIRTEL-${Date.now()}`;
+
     try {
-      const token = await this.getAccessToken();
-      const response = await axios.post(
-        `${this.baseUrl}${endpoint}`,
-        {
-          reference,
-          subscriber: {
-            country: this.country,
-            currency: this.currency,
-            msisdn: phoneNumber,
-          },
-          transaction: {
-            amount: parseFloat(amount),
-            country: this.country,
-            currency: this.currency,
-            id: reference,
-          },
-        },
-        {
-          headers: {
-            Authorization: this.buildBearerAuthHeader(token),
-            "X-Country": this.country,
-            "X-Currency": this.currency,
-          },
-          timeout: this.timeoutMs,
-        },
-      );
-
-      const durationMs = Date.now() - startTime;
-      recordTelecomLatency({
-        provider: this.providerName,
-        operation: "requestPayment",
-        durationMs,
-        success: true,
-        statusCode: response.status,
-        endpoint,
-      });
-
-      return { success: true, data: response.data, reference };
-    } catch (error: unknown) {
-      const durationMs = Date.now() - startTime;
-      const isTimeout = isNetworkTimeout(error);
-      const axiosError = error as AxiosError;
-      recordTelecomLatency({
-        provider: this.providerName,
-        operation: "requestPayment",
-        durationMs,
-        success: isTimeout ? true : false,
-        statusCode: isTimeout ? undefined : axiosError?.response?.status,
-        endpoint,
-      });
-
-      if (isTimeout) {
-        logger.warn(
-          { reference, phoneNumber, amount, durationMs },
-          "Airtel requestPayment timed out, scheduling status poll",
-        );
-        addPollEntry(reference, this);
-        return { success: true, data: { reference, status: "pending" } };
-      }
-
-      return { success: false, error };
-    }
-  }
-
-  async sendPayout(phoneNumber: string, amount: string) {
-    const startTime = Date.now();
-    const endpoint = "/standard/v1/disbursements/";
-    const reference = `AIRTEL-PAYOUT-${Date.now()}`;
-    try {
-      const token = await this.getAccessToken();
-      const response = await axios.post(
-        `${this.baseUrl}${endpoint}`,
-        {
-          reference,
-          payee: { msisdn: phoneNumber },
-          transaction: {
-            amount: parseFloat(amount),
-            id: reference,
-          },
-        },
-        {
-          headers: {
-            Authorization: this.buildBearerAuthHeader(token),
-            "X-Country": this.country,
-            "X-Currency": this.currency,
-          },
-          timeout: this.timeoutMs,
-        },
-      );
-
-      const durationMs = Date.now() - startTime;
-      recordTelecomLatency({
-        provider: this.providerName,
-        operation: "sendPayout",
-        durationMs,
-        success: true,
-        statusCode: response.status,
-        endpoint,
-      });
-
-      return { success: true, data: response.data, reference };
-    } catch (error: unknown) {
-      const durationMs = Date.now() - startTime;
-      const isTimeout = isNetworkTimeout(error);
-      const axiosError = error as AxiosError;
-      recordTelecomLatency({
-        provider: this.providerName,
-        operation: "sendPayout",
-        durationMs,
-        success: isTimeout ? true : false,
-        statusCode: isTimeout ? undefined : axiosError?.response?.status,
-        endpoint,
-      });
-
-      if (isTimeout) {
-        logger.warn(
-          { reference, phoneNumber, amount, durationMs },
-          "Airtel sendPayout timed out, scheduling status poll",
-        );
-        addPollEntry(reference, this);
-        return { success: true, data: { reference, status: "pending" } };
-      }
-
-      return { success: false, error };
-    }
-  }
-
-  async getTransactionStatus(
-    reference: string,
-  ): Promise<{ status: AirtelTransactionStatus }> {
-    const startTime = Date.now();
-    const endpoint = `/standard/v1/payments/${encodeURIComponent(reference)}`;
-    try {
-      const token = await this.getAccessToken();
       const response = await axios.get<AirtelStatusResponse>(
         `${this.baseUrl}${endpoint}`,
         {
@@ -319,6 +187,7 @@ export class AirtelService extends BaseProvider {
             Authorization: this.buildBearerAuthHeader(token),
             "X-Country": this.country,
             "X-Currency": this.currency,
+            "Content-Type": "application/json",
           },
           timeout: this.timeoutMs,
         },
@@ -327,41 +196,87 @@ export class AirtelService extends BaseProvider {
       const durationMs = Date.now() - startTime;
       recordTelecomLatency({
         provider: this.providerName,
-        operation: "getTransactionStatus",
+        endpoint,
         durationMs,
         success: true,
-        statusCode: response.status,
-        endpoint: "/standard/v1/payments/{ref}",
       });
 
-      const txStatus = String(response.data?.data?.transaction?.status ?? "").toUpperCase();
-      if (txStatus === "TS") return { status: "completed" };
-      if (txStatus === "TF") return { status: "failed" };
-      if (txStatus === "TP") return { status: "pending" };
-      return { status: "unknown" };
-    } catch (error: unknown) {
+      const data = response?.data;
+      return {
+        status: this.parseTransactionStatus(data),
+        raw: data,
+      };
+    } catch (error) {
       const durationMs = Date.now() - startTime;
-      const isTimeout = isNetworkTimeout(error);
-      const axiosError = error as AxiosError;
       recordTelecomLatency({
         provider: this.providerName,
-        operation: "getTransactionStatus",
+        endpoint,
         durationMs,
-        success: isTimeout ? true : false,
-        statusCode: isTimeout ? undefined : axiosError?.response?.status,
-        endpoint: "/standard/v1/payments/{ref}",
+        success: false,
       });
 
-      if (isTimeout) {
-        logger.warn(
-          { reference, durationMs },
-          "Airtel getTransactionStatus timed out, scheduling poll retry",
-        );
-        addPollEntry(reference, this);
+      if (error instanceof AxiosError && error.response?.status === 404) {
         return { status: "pending" };
       }
 
-      return { status: "unknown" };
+      throw error;
     }
+  }
+
+  private parseTransactionStatus(response?: AirtelStatusResponse): AirtelTransactionStatus {
+    if (!response) {
+      return "unknown";
+    }
+
+    const rawStatus =
+      response.data?.transaction?.status ??
+      response.data?.status ??
+      response.status?.code ??
+      (typeof response.status === "string" ? response.status : undefined) ??
+      response.transaction_status;
+
+    if (!rawStatus || typeof rawStatus !== "string") {
+      if (response.status?.success === true) {
+        return "completed";
+      }
+      if (response.status?.success === false) {
+        return "failed";
+      }
+      return "unknown";
+    }
+
+    const lower = rawStatus.toLowerCase().trim();
+
+    if (
+      lower === "completed" ||
+      lower === "success" ||
+      lower === "successful" ||
+      lower === "ts" ||
+      lower === "tip" ||
+      lower === "paid"
+    ) {
+      return "completed";
+    }
+
+    if (
+      lower === "failed" ||
+      lower === "failure" ||
+      lower === "declined" ||
+      lower === "rejected" ||
+      lower === "cancelled"
+    ) {
+      return "failed";
+    }
+
+    if (
+      lower === "pending" ||
+      lower === "processing" ||
+      lower === "initiated" ||
+      lower === "in_progress"
+    ) {
+      return "pending";
+    }
+
+    return "unknown";
   }
 }
