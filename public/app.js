@@ -18,10 +18,8 @@ function loadTheme() {
   setTheme(saved);
 }
 
-// Initialize theme before anything else
 loadTheme();
 
-// Theme switcher event listeners
 document.querySelectorAll(".theme-switcher button").forEach(btn => {
   btn.addEventListener("click", () => saveTheme(btn.dataset.theme));
 });
@@ -126,7 +124,9 @@ const receiveAssetSelect = document.getElementById("calc-receive-asset");
 
 const rateDisplay = document.getElementById("rate-display");
 const feeDisplay = document.getElementById("fee-display");
-const finalDisplay = document.getElementById("final-display");
+const finalDisplay = document.getElementById(
+  "final-display"
+);
 
 function calculateConversion() {
   if (!sendAmountInput || !sendCurrencySelect || !receiveAssetSelect) return;
@@ -139,17 +139,13 @@ function calculateConversion() {
   if (!config) return;
 
   const rate = config[receiveAsset] || 0;
-
-  // Operator fee (1.5%)
   const fee = sendAmt * 0.015;
   const netAmt = Math.max(0, sendAmt - fee);
   const receiveVal = netAmt * rate;
 
-  // Format decimal display outputs to 2 decimal places
   const formattedFee = fee.toFixed(2);
   const formattedReceiveVal = receiveVal.toFixed(2);
 
-  // Update DOM elements cleanly
   if (rateDisplay) {
     rateDisplay.textContent = config.rateStr.replace("USDC", receiveAsset);
   }
@@ -164,7 +160,6 @@ function calculateConversion() {
   }
 }
 
-// Add event listeners for inputs (including keypress and keyup for live calculation)
 if (sendAmountInput) {
   sendAmountInput.addEventListener("input", calculateConversion);
   sendAmountInput.addEventListener("keypress", calculateConversion);
@@ -178,5 +173,4 @@ if (receiveAssetSelect) {
   receiveAssetSelect.addEventListener("change", calculateConversion);
 }
 
-// Initial calculation
 calculateConversion();
