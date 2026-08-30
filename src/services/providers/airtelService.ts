@@ -2,6 +2,9 @@ import axios, { AxiosError } from "axios";
 import { BaseProvider, ProviderAuthConfig } from "./baseProvider";
 import { recordTelecomLatency } from "../../utils/logger";
 import logger from "../../utils/logger";
+import CircuitBreaker from "opossum";
+import fs from "fs";
+import path from "path";
 
 interface AirtelTokenResponse {
   access_token: string;
@@ -114,16 +117,58 @@ function buildAirtelConfig(opts: AirtelServiceConfig = {}): AirtelResolvedConfig
   };
 }
 
+function logAuditStatusChange(state: string, details: any): void {
+  try {
+    const auditLogPath = path.resolve(process.cwd(), "logs", "audit.log");
+    const logDir = path.dirname(auditLogPath);
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+    const entry = JSON.stringify({
+      timestamp: new Date().toISOString(),
+      service: "airtel",
+      circuitBreakerState: state,
+      details,
+    }) + "\n";
+    fs.appendFileSync(auditLogPath, entry);
+  } catch (err) {
+    logger.error({ error: err }, "Failed to write circuit breaker audit log");
+  }
+  logger.info({ state, details }, `Airtel circuit breaker status changed to ${state}`);
+}
+
 export class AirtelService extends BaseProvider {
   private readonly country: string;
   private readonly currency: string;
   private readonly providerName: string = "airtel";
+  private breaker: CircuitBreaker;
 
   constructor(opts: AirtelServiceConfig = {}) {
     const config = buildAirtelConfig(opts);
     super(config);
     this.country = config.country;
     this.currency = config.currency;
+
+    const breakerOptions = {
+      timeout: this.timeoutMs,
+      errorThresholdPercentage: 50,
+      volumeThreshold: 10,
+      resetTimeout: 30_000,
+    };
+
+    this.breaker = new CircuitBreaker(async (fn: () => Promise<any>) => fn(), breakerOptions);
+
+    this.breaker.on("open", () => logAuditStatusChange("open", { volumeThreshold: 10, errorThresholdPercentage: 50 }));
+    this.breaker.on("halfOpen", () => logAuditStatusChange("half_open", {}));
+    this.breaker.on("close", () => logAuditStatusChange("closed", {}));
+    this.breaker.fallback(() => {
+      logger.warn("Airtel circuit breaker is OPEN. Routing transaction to fallback queue.");
+      return { success: false, fallbackRouted: true, error: "Circuit breaker is open. Routed to fallback queue." };
+    });
+  }
+
+  public async executeWithBreaker<T>(fn: () => Promise<T>): Promise<T> {
+    return this.breaker.fire(fn);
   }
 
   async getAccessToken(): Promise<string> {
@@ -134,147 +179,161 @@ export class AirtelService extends BaseProvider {
     const startTime = Date.now();
     const endpoint = "/auth/oauth2/token";
     try {
-      const response = await axios.post<AirtelTokenResponse>(
-        `${this.baseUrl}${endpoint}`,
-        undefined,
-        {
-          headers: {
-            Authorization: this.buildBasicAuthHeader(this.apiKey, this.apiSecret),
-            "Content-Type": "application/json",
+      const response = await this.executeWithBreaker(async () =>
+        axios.post<AirtelTokenResponse>(
+          `${this.baseUrl}${endpoint}`,
+          undefined,
+          {
+            headers: {
+              Authorization: this.buildBasicAuthHeader(this.apiKey, this.apiSecret),
+              "Content-Type": "application/json",
+            },
+            timeout: this.timeoutMs,
           },
-          timeout: this.timeoutMs,
-        },
+        )
       );
 
       const durationMs = Date.now() - startTime;
       recordTelecomLatency({
         provider: this.providerName,
-        endpoint,
+        country: this.country,
+        operation: "getAccessToken",
         durationMs,
         success: true,
       });
 
-      const { access_token, expires_in } = response.data;
-      if (!access_token || typeof access_token !== "string") {
-        throw new Error("Airtel token response missing access_token");
-      }
-
-      const ttl = typeof expires_in === "number" && !isNaN(expires_in) ? expires_in : 3600;
-      this.setCachedToken(access_token, ttl);
-      return access_token;
+      const data = response.data;
+      const expiresIn = typeof data.expires_in === "number" ? data.expires_in : 3600;
+      this.setToken(data.access_token, expiresIn);
+      return data.access_token;
     } catch (error) {
       const durationMs = Date.now() - startTime;
       recordTelecomLatency({
         provider: this.providerName,
-        endpoint,
+        country: this.country,
+        operation: "getAccessToken",
         durationMs,
         success: false,
       });
+      logger.error(
+        { error: error instanceof Error ? error.message : error, durationMs },
+        "Airtel getAccessToken failed",
+      );
       throw error;
     }
   }
 
-  async getTransactionStatus(reference: string): Promise<{ status: AirtelTransactionStatus; raw?: unknown }> {
-    const token = await this.getAccessToken();
-    const endpoint = `/${this.country.toLowerCase()}/standard/v1/payments/${reference}`;
+  async initiatePayment(phoneNumber: string, amount: string, reference: string): Promise<any> {
     const startTime = Date.now();
-
+    const endpoint = "/standard/v1/payments/";
     try {
-      const response = await axios.get<AirtelStatusResponse>(
-        `${this.baseUrl}${endpoint}`,
-        {
-          headers: {
-            Authorization: this.buildBearerAuthHeader(token),
-            "X-Country": this.country,
-            "X-Currency": this.currency,
-            "Content-Type": "application/json",
-          },
-          timeout: this.timeoutMs,
+      const token = await this.getAccessToken();
+      const payload = {
+        reference,
+        subscriber: {
+          country: this.country,
+          currency: this.currency,
+          msisdn: phoneNumber,
         },
+        transaction: {
+          amount,
+          country: this.country,
+          currency: this.currency,
+          id: reference,
+        },
+      };
+
+      const response = await this.executeWithBreaker(async () =>
+        axios.post(
+          `${this.baseUrl}${endpoint}`,
+          payload,
+          {
+            headers: {
+              Authorization: this.buildBearerAuthHeader(token),
+              "X-Country": this.country,
+              "X-Currency": this.currency,
+              "Content-Type": "application/json",
+            },
+            timeout: this.timeoutMs,
+          },
+        )
       );
+
+      if ((response as any).fallbackRouted) {
+        return response;
+      }
 
       const durationMs = Date.now() - startTime;
       recordTelecomLatency({
         provider: this.providerName,
-        endpoint,
+        country: this.country,
+        operation: "initiatePayment",
         durationMs,
         success: true,
       });
 
-      const data = response?.data;
       return {
-        status: this.parseTransactionStatus(data),
-        raw: data,
+        success: true,
+        data: response.data,
       };
     } catch (error) {
+      if (isNetworkTimeout(error)) {
+        logger.error({ error, reference }, "Airtel payment request timed out");
+      }
       const durationMs = Date.now() - startTime;
       recordTelecomLatency({
         provider: this.providerName,
-        endpoint,
+        country: this.country,
+        operation: "initiatePayment",
         durationMs,
         success: false,
       });
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : error,
+      };
+    }
+  }
 
-      if (error instanceof AxiosError && error.response?.status === 404) {
+  async getTransactionStatus(reference: string): Promise<{ status: AirtelTransactionStatus }> {
+    const endpoint = `/standard/v1/payments/${reference}`;
+    try {
+      const token = await this.getAccessToken();
+      const response = await this.executeWithBreaker(async () =>
+        axios.get<AirtelStatusResponse>(
+          `${this.baseUrl}${endpoint}`,
+          {
+            headers: {
+              Authorization: this.buildBearerAuthHeader(token),
+              "X-Country": this.country,
+              "X-Currency": this.currency,
+              "Content-Type": "application/json",
+            },
+            timeout: this.timeoutMs,
+          },
+        )
+      );
+
+      if ((response as any).fallbackRouted) {
         return { status: "pending" };
       }
 
-      throw error;
-    }
-  }
+      const statusStr = response.data?.data?.transaction?.status?.toLowerCase() ??
+        response.data?.status?.success ? "completed" : "unknown";
 
-  private parseTransactionStatus(response?: AirtelStatusResponse): AirtelTransactionStatus {
-    if (!response) {
-      return "unknown";
-    }
-
-    const rawStatus =
-      response.data?.transaction?.status ??
-      response.data?.status ??
-      response.status?.code ??
-      (typeof response.status === "string" ? response.status : undefined) ??
-      response.transaction_status;
-
-    if (!rawStatus || typeof rawStatus !== "string") {
-      if (response.status?.success === true) {
-        return "completed";
+      if (statusStr.includes("success") || statusStr.includes("complet")) {
+        return { status: "completed" };
       }
-      if (response.status?.success === false) {
-        return "failed";
+      if (statusStr.includes("fail") || statusStr.includes("error")) {
+        return { status: "failed" };
       }
-      return "unknown";
-    }
-
-    const lower = rawStatus.toLowerCase().trim();
-
-    if (
-      lower === "completed" ||
-      lower === "success" ||
-      lower === "successful" ||
-      lower === "ts" ||
-      lower === "tip" ||
-      lower === "paid"
-    ) {
-      return "completed";
-    }
-
-    if (
-      lower === "failed" ||
-      lower === "failure" ||
-      lower === "declined" ||
-      lower === "rejected" ||
-      lower === "cancelled"
-    ) {
-      return "failed";
-    }
-
-    if (
-      lower === "pending" ||
-      lower === "processing" ||
-      lower === "initiated" ||
-      lower === "in_progress"
-    ) {
-      return "pending";
+      if (statusStr.includes("pending") || statusStr.includes("process")) {
+        return { status: "pending" };
+      }
+      return { status: "unknown" };
+    } catch (error) {
+      logger.error({ reference, error: error instanceof Error ? error.message : error }, "Airtel getTransactionStatus failed");
+      return { status: "unknown" };
     }
 
     return "unknown";
