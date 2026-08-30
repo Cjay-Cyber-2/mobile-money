@@ -1,7 +1,6 @@
 # Mobile Money ↔ Stellar Bridge
 
 [![CI](https://github.com/sublime247/mobile-money/actions/workflows/ci.yml/badge.svg)](https://github.com/sublime247/mobile-money/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/sublime247/mobile-money/branch/main/graph/badge.svg)](https://codecov.io/gh/sublime247/mobile-money)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A backend service that bridges African mobile money providers (MTN MoMo, Airtel Money, Orange Money) with the [Stellar](https://stellar.org) blockchain network — enabling low-cost cross-border payments and remittances across Africa and beyond.
@@ -367,8 +366,6 @@ npm run test:mutation       # Mutation testing (Stryker)
 * k6 load/stress tests with benchmarking against Go vs Node ingest services
 * Stryker mutation testing
 * Fuzz testing
-
-> Coverage reports upload to [Codecov](https://codecov.io/gh/sublime247/mobile-money) on every push to main.
 
 ## 📚 API Documentation
 
@@ -1061,7 +1058,7 @@ curl https://<your-service>.up.railway.app/health
 GitHub Actions pipeline (`.github/workflows/ci.yml`):
 
 1. **Security** — npm audit, Snyk vulnerability scanning
-2. **Test** — Lint, Jest (with Postgres + Redis services), Playwright E2E, Codecov upload
+2. **Test** — Lint, Jest (with Postgres + Redis services), Playwright E2E
 3. **Build** — TypeScript compilation
 4. **Docker** — Build and push image on main branch
 5. **Deploy** — kubectl apply → rollout status → health check → auto-rollback on failure

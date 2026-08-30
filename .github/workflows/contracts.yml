@@ -238,16 +238,6 @@ jobs:
           path: contracts/coverage/
           retention-days: 30
 
-      - name: Upload to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: contracts/coverage/lcov.info
-          flags: soroban-escrow
-          name: escrow-coverage
-          fail_ci_if_error: false
-          verbose: true
-
   # ──────────────────────────────────────────────────────────────────────────
   # 5. Summary gate – all previous jobs must pass
   # ──────────────────────────────────────────────────────────────────────────
