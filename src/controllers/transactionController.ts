@@ -869,7 +869,11 @@ export const withdrawHandler = async (req: Request, res: Response) => {
 export const getTransactionHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const transaction = await transactionModel.findById(id);
+    let transaction = await transactionModel.findById(id);
+
+    if (!transaction && typeof id === "string" && id.trim()) {
+      transaction = await transactionModel.findByReferenceNumber(id.trim());
+    }
 
     if (!transaction) {
       throw createError(ERROR_CODES.NOT_FOUND, null, {
@@ -879,7 +883,7 @@ export const getTransactionHandler = async (req: Request, res: Response) => {
 
     let jobProgress = null;
     if (transaction.status === TransactionStatus.Pending) {
-      jobProgress = await getJobProgress(id);
+      jobProgress = await getJobProgress(transaction.id);
     }
 
     if (transaction.status === TransactionStatus.Pending) {

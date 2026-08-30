@@ -363,8 +363,12 @@ export class TransactionModel {
       addCondition("provider = ?", filters.provider);
     }
 
-    if (filters.referenceNumber) {
-      addCondition("reference_number = ?", filters.referenceNumber);
+    if (
+      filters.referenceNumber &&
+      typeof filters.referenceNumber === "string" &&
+      filters.referenceNumber.trim()
+    ) {
+      addCondition("reference_number = ?", filters.referenceNumber.trim());
     }
 
     if (filters.statuses?.length) {
@@ -765,12 +769,21 @@ export class TransactionModel {
   async findByReferenceNumber(
     referenceNumber: string,
   ): Promise<Transaction | null> {
+    if (
+      !referenceNumber ||
+      typeof referenceNumber !== "string" ||
+      !referenceNumber.trim()
+    ) {
+      return null;
+    }
+
+    const trimmed = referenceNumber.trim();
     const result = await queryRead<TransactionRow>(
       `SELECT ${TRANSACTION_SELECT_COLUMNS}
        FROM transactions
        WHERE reference_number = $1
        LIMIT 1`,
-      [referenceNumber],
+      [trimmed],
     );
 
     return mapTransactionRow(result.rows[0]);
