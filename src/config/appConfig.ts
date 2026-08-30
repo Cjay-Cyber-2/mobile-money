@@ -34,6 +34,22 @@ export const configSchema = convict({
     },
   },
 
+  // Stellar / Horizon
+  stellar: {
+    horizonUrl: {
+      doc: "Primary Stellar Horizon server URL",
+      format: String,
+      default: "https://horizon-testnet.stellar.org",
+      env: "STELLAR_HORIZON_URL",
+    },
+    fallbackHorizonUrls: {
+      doc: "Comma-separated list of secondary fallback Stellar Horizon server URLs",
+      format: String,
+      default: "",
+      env: "STELLAR_FALLBACK_HORIZON_URLS",
+    },
+  },
+
   // Database
   database: {
     url: {
@@ -166,9 +182,128 @@ export const configSchema = convict({
       depositPushPath: {
         doc: "Path for triggering a Moov Côte d'Ivoire deposit push",
         format: String,
-        default: "/v1/push",
+        default: "/api/v1/deposit",
         env: "MOOV_CI_DEPOSIT_PUSH_PATH",
       },
-    }
-  }
+      clientId: {
+        doc: "Client ID for Moov Côte d'Ivoire API",
+        format: String,
+        default: "",
+        env: "MOOV_CI_CLIENT_ID",
+      },
+      clientSecret: {
+        doc: "Client Secret for Moov Côte d'Ivoire API",
+        format: String,
+        default: "",
+        env: "MOOV_CI_CLIENT_SECRET",
+      },
+    },
+    orangeCameroon: {
+      minAmount: {
+        doc: "Minimum transaction amount for Orange Cameroon (XAF)",
+        format: "nat",
+        default: 100,
+        env: "ORANGE_CM_MIN_AMOUNT",
+      },
+      maxAmount: {
+        doc: "Maximum transaction amount for Orange Cameroon (XAF)",
+        format: "nat",
+        default: 500000,
+        env: "ORANGE_CM_MAX_AMOUNT",
+      },
+      baseUrl: {
+        doc: "Base URL for Orange Cameroon API",
+        format: String,
+        default: "",
+        env: "ORANGE_CM_BASE_URL",
+      },
+      merchantKey: {
+        doc: "Merchant key for Orange Cameroon",
+        format: String,
+        default: "",
+        env: "ORANGE_CM_MERCHANT_KEY",
+      },
+      authUrl: {
+        doc: "Authentication URL for Orange Cameroon",
+        format: String,
+        default: "",
+        env: "ORANGE_CM_AUTH_URL",
+      },
+    },
+    airtelTanzania: {
+      minAmount: {
+        doc: "Minimum transaction amount for Airtel Tanzania (TZS)",
+        format: "nat",
+        default: 500,
+        env: "AIRTEL_TZ_MIN_AMOUNT",
+      },
+      maxAmount: {
+        doc: "Maximum transaction amount for Airtel Tanzania (TZS)",
+        format: "nat",
+        default: 3000000,
+        env: "AIRTEL_TZ_MAX_AMOUNT",
+      },
+      baseUrl: {
+        doc: "Base URL for Airtel Tanzania API",
+        format: String,
+        default: "",
+        env: "AIRTEL_TZ_BASE_URL",
+      },
+      clientId: {
+        doc: "Client ID for Airtel Tanzania",
+        format: String,
+        default: "",
+        env: "AIRTEL_TZ_CLIENT_ID",
+      },
+      clientSecret: {
+        doc: "Client Secret for Airtel Tanzania",
+        format: String,
+        default: "",
+        env: "AIRTEL_TZ_CLIENT_SECRET",
+      },
+    },
+    waveSenegal: {
+      minAmount: {
+        doc: "Minimum transaction amount for Wave Senegal (XOF)",
+        format: "nat",
+        default: 100,
+        env: "WAVE_SN_MIN_AMOUNT",
+      },
+      maxAmount: {
+        doc: "Maximum transaction amount for Wave Senegal (XOF)",
+        format: "nat",
+        default: 2000000,
+        env: "WAVE_SN_MAX_AMOUNT",
+      },
+      baseUrl: {
+        doc: "Base URL for Wave Senegal API",
+        format: String,
+        default: "https://api.wave.com/v1",
+        env: "WAVE_SN_BASE_URL",
+      },
+      apiKey: {
+        doc: "API Key for Wave Senegal",
+        format: String,
+        default: "",
+        env: "WAVE_SN_API_KEY",
+      },
+    },
+  },
 });
+
+// Load environment-specific configuration files if present
+const envName = process.env.NODE_ENV || "development";
+const configDir = path.join(__dirname, "configurations");
+const envFilePath = path.join(configDir, `${envName}.json`);
+
+if (fs.existsSync(envFilePath)) {
+  configSchema.loadFile(envFilePath);
+}
+
+configSchema.validate({ allowed: "strict" });
+
+export const appConfig = configSchema.get();
+
+export function getConfigValue<T>(key: string): T {
+  return configSchema.get(key) as T;
+}
