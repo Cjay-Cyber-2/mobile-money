@@ -6,6 +6,8 @@ import * as fs from "fs";
  * Centralized application configuration using Convict.
  * This system consolidates all hardcoded limits, provider configs, and app settings
  * into a single source of truth with environment-based overrides.
+ * 
+ * NOTE: Orange Money Cameroon configuration placeholders added for future corridor expansion.
  */
 
 // Define the configuration schema
