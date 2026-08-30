@@ -30,7 +30,10 @@ impl OracleContract {
     pub fn register_pool(env: Env, admin: Address, pool: OraclePool) {
         admin.require_auth();
 
-        assert!(pool.max_spread_bps > 0, "Oracle: max_spread_bps must be positive");
+        assert!(
+            pool.max_spread_bps > 0,
+            "Oracle: max_spread_bps must be positive"
+        );
 
         let mut pools: Vec<OraclePool> = env
             .storage()
@@ -55,7 +58,10 @@ impl OracleContract {
         amount_in: i128,
         max_spread_bps: u32,
     ) -> Result<i128, OracleError> {
-        assert!(max_spread_bps > 0, "Oracle: max_spread_bps must be positive");
+        assert!(
+            max_spread_bps > 0,
+            "Oracle: max_spread_bps must be positive"
+        );
         let (best, worst) = Self::fetch_rate_range(&env, asset_in, asset_out, amount_in);
 
         let spread_bps = Self::compute_spread_bps(best, worst)?;
@@ -125,7 +131,12 @@ impl OracleContract {
             let quote: i128 = env.invoke_contract(
                 &pool.contract,
                 &Symbol::new(env, "get_quote"),
-                soroban_sdk::vec![env, pool.asset_in.clone().into(), pool.asset_out.clone().into(), amount_in.into()],
+                soroban_sdk::vec![
+                    env,
+                    pool.asset_in.clone().into(),
+                    pool.asset_out.clone().into(),
+                    amount_in.into()
+                ],
             );
 
             assert!(quote > 0, "Oracle: pool quote must be positive");
@@ -139,7 +150,10 @@ impl OracleContract {
             found = true;
         }
 
-        assert!(found, "Oracle: no registered pools for requested asset pair");
+        assert!(
+            found,
+            "Oracle: no registered pools for requested asset pair"
+        );
 
         (best, worst)
     }
@@ -165,7 +179,12 @@ mod test {
 
     #[contractimpl]
     impl DummyPool {
-        pub fn get_quote(_env: Env, _asset_in: Address, _asset_out: Address, amount_in: i128) -> i128 {
+        pub fn get_quote(
+            _env: Env,
+            _asset_in: Address,
+            _asset_out: Address,
+            amount_in: i128,
+        ) -> i128 {
             amount_in * 100
         }
     }
@@ -175,7 +194,12 @@ mod test {
 
     #[contractimpl]
     impl SlippagePool {
-        pub fn get_quote(_env: Env, _asset_in: Address, _asset_out: Address, amount_in: i128) -> i128 {
+        pub fn get_quote(
+            _env: Env,
+            _asset_in: Address,
+            _asset_out: Address,
+            amount_in: i128,
+        ) -> i128 {
             amount_in * 85
         }
     }
@@ -202,7 +226,8 @@ mod test {
 
         OracleContractClient::new(&env, &oracle_id).register_pool(&admin, pool);
 
-        let output = OracleContractClient::new(&env, &oracle_id).get_rate(&asset_in, &asset_out, &1_000);
+        let output =
+            OracleContractClient::new(&env, &oracle_id).get_rate(&asset_in, &asset_out, &1_000);
         assert_eq!(output, 100_000);
     }
 

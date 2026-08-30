@@ -52,13 +52,9 @@ impl VaultContract {
             return Err(VaultError::AlreadyInitialised);
         }
 
-        env.storage().instance().set(
-            &STATE,
-            &VaultState {
-                admin,
-                token,
-            },
-        );
+        env.storage()
+            .instance()
+            .set(&STATE, &VaultState { admin, token });
 
         env.storage().instance().extend_ttl(1000, 10000);
         Ok(())
@@ -113,10 +109,10 @@ impl VaultContract {
             .instance()
             .get(&STATE)
             .ok_or(VaultError::NotInitialised)?;
-            
+
         let token_client = token::Client::new(&env, &state.token);
         let balance = token_client.balance(&env.current_contract_address());
-        
+
         env.storage().instance().extend_ttl(1000, 10000);
         Ok(balance)
     }
@@ -145,7 +141,7 @@ mod tests {
         // Deploy a test token
         let token_admin = Address::generate(&env);
         let token_id = env.register_stellar_asset_contract_v2(token_admin);
-        
+
         let contract_id = env.register(VaultContract, ());
         let client = VaultContractClient::new(&env, &contract_id);
 
@@ -161,57 +157,57 @@ mod tests {
         let state = client.get_state();
         assert_eq!(state.token, token);
         assert_eq!(state.admin, admin);
-        
+
         let balance = client.get_balance();
         assert_eq!(balance, 0);
     }
-    
+
     #[test]
     fn test_sweep() {
         let (env, admin, user, token, client) = setup();
 
         client.initialize(&admin, &token);
-        
+
         // Mint tokens to the vault contract directly to simulate accumulated balances
         StellarAssetClient::new(&env, &token).mint(&client.address, &MINT_AMOUNT);
-        
+
         assert_eq!(client.get_balance(), MINT_AMOUNT);
-        
+
         // Sweep half the amount
         let sweep_amount = 5_000_000;
         client.sweep(&sweep_amount, &user);
-        
+
         assert_eq!(client.get_balance(), 5_000_000);
-        
+
         let token_client = token::Client::new(&env, &token);
         assert_eq!(token_client.balance(&user), 5_000_000);
     }
-    
+
     #[test]
     fn test_sweep_insufficient_balance() {
         let (env, admin, user, token, client) = setup();
 
         client.initialize(&admin, &token);
-        
+
         StellarAssetClient::new(&env, &token).mint(&client.address, &1_000_000);
-        
+
         // Try to sweep more than available
         let result = client.try_sweep(&2_000_000, &user);
         assert!(result.is_err());
     }
-    
+
     #[test]
     fn test_sweep_invalid_amount() {
         let (env, admin, user, token, client) = setup();
 
         client.initialize(&admin, &token);
-        
+
         StellarAssetClient::new(&env, &token).mint(&client.address, &1_000_000);
-        
+
         // Try to sweep 0 or negative
         let result = client.try_sweep(&0, &user);
         assert!(result.is_err());
-        
+
         let result_neg = client.try_sweep(&-100, &user);
         assert!(result_neg.is_err());
     }
