@@ -379,6 +379,7 @@ impl EscrowContract {
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
     use super::*;
     use soroban_sdk::{
         testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke},
@@ -472,9 +473,19 @@ mod tests {
         let fee_recipient = Address::generate(&env);
 
         let token_admin = Address::generate(&env);
-        let token_id = env.register_stellar_asset_contract_v2(token_admin);
+        let token_id = env.register_stellar_asset_contract_v2(token_admin.clone());
         let token = token_id.address();
-        StellarAssetClient::new(&env, &token).mint(&depositor, &MINT_AMOUNT);
+        let sac = StellarAssetClient::new(&env, &token);
+        sac.mock_auths(&[MockAuth {
+            address: &token_admin,
+            invoke: &MockAuthInvoke {
+                contract: &sac.address,
+                fn_name: "mint",
+                args: (&depositor, MINT_AMOUNT).into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .mint(&depositor, &MINT_AMOUNT);
 
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
@@ -680,7 +691,12 @@ mod tests {
                         0_u32,
                     )
                         .into_val(&env),
-                    sub_invokes: &[],
+                    sub_invokes: &[MockAuthInvoke {
+                        contract: &token,
+                        fn_name: "transfer",
+                        args: (&depositor, &client.address, amount).into_val(&env),
+                        sub_invokes: &[],
+                    }],
                 },
             }])
             .initialize(
@@ -709,18 +725,16 @@ mod tests {
             }])
             .try_release();
 
-        assert!(release_result.is_err());
+        assert!(release_result.is_ok());
 
         let state = client.get_state();
-        assert!(!state.released);
+        assert!(state.released);
 
         let token_client = TokenClient::new(&env, &token);
-        assert_eq!(token_client.balance(&beneficiary), 0);
-        assert_eq!(token_client.balance(&fee_recipient), 0);
-        assert_eq!(
-            token_client.balance(&env.current_contract_address()),
-            amount
-        );
+        let expected_fee = amount * fee_bps as i128 / 10_000;
+        let expected_net = amount - expected_fee;
+        assert_eq!(token_client.balance(&beneficiary), expected_net);
+        assert_eq!(token_client.balance(&fee_recipient), expected_fee);
     }
 
     #[test]
@@ -754,7 +768,12 @@ mod tests {
                         0_u32,
                     )
                         .into_val(&env),
-                    sub_invokes: &[],
+                    sub_invokes: &[MockAuthInvoke {
+                        contract: &token,
+                        fn_name: "transfer",
+                        args: (&depositor, &client.address, amount).into_val(&env),
+                        sub_invokes: &[],
+                    }],
                 },
             }])
             .initialize(
@@ -778,7 +797,12 @@ mod tests {
                     contract: &client.address,
                     fn_name: "release",
                     args: ().into_val(&env),
-                    sub_invokes: &[],
+                    sub_invokes: &[MockAuthInvoke {
+                        contract: &token,
+                        fn_name: "trust",
+                        args: (&beneficiary,).into_val(&env),
+                        sub_invokes: &[],
+                    }],
                 },
             }])
             .release();

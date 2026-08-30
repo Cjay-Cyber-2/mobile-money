@@ -124,7 +124,7 @@ impl VaultContract {
 mod tests {
     use super::*;
     use soroban_sdk::{
-        testutils::{Address as _, Ledger},
+        testutils::Address as _,
         token::StellarAssetClient,
         Address, Env,
     };

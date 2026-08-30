@@ -263,7 +263,7 @@
                   "storage": [
                     {
                       "key": {
-                        "string": "ESCROW"
+                        "symbol": "ESCROW"
                       },
                       "val": {
                         "map": [

@@ -1,16 +1,21 @@
 #![no_std]
 
-use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Env, Symbol, Vec};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, IntoVal,
+    Symbol, Vec,
+};
 
-const ORACLE_POOLS: Symbol = Symbol::short("ORACLE_POOLS");
+const ORACLE_POOLS: Symbol = symbol_short!("orc_pools");
 
 #[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
 pub enum OracleError {
-    Unauthorized,
-    InvalidAmount,
-    NoRegisteredPools,
-    PoolQueryFailed,
-    SpreadTooHigh,
+    Unauthorized = 1,
+    InvalidAmount = 2,
+    NoRegisteredPools = 3,
+    PoolQueryFailed = 4,
+    SpreadTooHigh = 5,
 }
 
 #[contracttype]
@@ -65,12 +70,10 @@ impl OracleContract {
         let (best, worst) = Self::fetch_rate_range(&env, asset_in, asset_out, amount_in);
 
         let spread_bps = Self::compute_spread_bps(best, worst)?;
-        assert!(
-            spread_bps <= max_spread_bps as i128,
-            "Oracle: spread {} bps exceeds allowed {} bps",
-            spread_bps,
-            max_spread_bps
-        );
+
+        if spread_bps > max_spread_bps as i128 {
+            return Err(OracleError::SpreadTooHigh);
+        }
 
         Ok(best)
     }
@@ -133,9 +136,9 @@ impl OracleContract {
                 &Symbol::new(env, "get_quote"),
                 soroban_sdk::vec![
                     env,
-                    pool.asset_in.clone().into(),
-                    pool.asset_out.clone().into(),
-                    amount_in.into()
+                    pool.asset_in.into_val(env),
+                    pool.asset_out.into_val(env),
+                    amount_in.into_val(env)
                 ],
             );
 
@@ -172,7 +175,7 @@ mod test {
     extern crate std;
 
     use super::*;
-    use soroban_sdk::{testutils::Ledger, Address, Env};
+    use soroban_sdk::{testutils::Address as _, testutils::Ledger, Address, Env};
 
     #[contract]
     pub struct DummyPool;
@@ -218,13 +221,13 @@ mod test {
         let oracle_id = env.register(OracleContract, ());
 
         let pool = OraclePool {
-            contract: pool_id.clone().into(),
+            contract: pool_id,
             asset_in: asset_in.clone(),
             asset_out: asset_out.clone(),
             max_spread_bps: 500,
         };
 
-        OracleContractClient::new(&env, &oracle_id).register_pool(&admin, pool);
+        OracleContractClient::new(&env, &oracle_id).register_pool(&admin, &pool);
 
         let output =
             OracleContractClient::new(&env, &oracle_id).get_rate(&asset_in, &asset_out, &1_000);
@@ -245,26 +248,23 @@ mod test {
         let oracle_id = env.register(OracleContract, ());
 
         let good_pool = OraclePool {
-            contract: good_pool_id.clone().into(),
+            contract: good_pool_id,
             asset_in: asset_in.clone(),
             asset_out: asset_out.clone(),
             max_spread_bps: 500,
         };
         let bad_pool = OraclePool {
-            contract: bad_pool_id.clone().into(),
+            contract: bad_pool_id,
             asset_in: asset_in.clone(),
             asset_out: asset_out.clone(),
             max_spread_bps: 500,
         };
 
         let client = OracleContractClient::new(&env, &oracle_id);
-        client.register_pool(&admin, good_pool);
-        client.register_pool(&admin, bad_pool);
+        client.register_pool(&admin, &good_pool);
+        client.register_pool(&admin, &bad_pool);
 
-        let result = std::panic::catch_unwind(|| {
-            client.get_rate_with_spread(&asset_in, &asset_out, &1_000, &200);
-        });
-
+        let result = client.try_get_rate_with_spread(&asset_in, &asset_out, &1_000, &200);
         assert!(result.is_err());
     }
 }
