@@ -57,6 +57,11 @@ export interface ConversionResult {
   baseCurrency: SupportedCurrency;
   /** Rate applied: how many baseCurrency units equal 1 originalCurrency unit. */
   rate: number;
+  buffer?: {
+    bufferPct: number;
+    bufferedAmount: number;
+    rawAmount: number;
+  };
 }
 
 export interface CurrencyServiceStatus {
@@ -184,14 +189,17 @@ export class CurrencyService {
     spreadResult: SpreadResult;
   }> {
     const baseConversion = this.convert(amount, from, to);
-
-    const spreadResult = await dynamicSpreadService.calculateSpread({
-      provider,
-      fromCurrency: from,
-      toCurrency: to,
-      liquidityVolumeUsd: overrides?.liquidityVolumeUsd,
-      settlementTimeMs: overrides?.settlementTimeMs,
-    }, baseConversion.rate, direction);
+    const spreadResult = await dynamicSpreadService.calculateSpread(
+      baseConversion.rate,
+      {
+        provider,
+        fromCurrency: from,
+        toCurrency: to,
+        liquidityVolumeUsd: overrides?.liquidityVolumeUsd,
+        settlementTimeMs: overrides?.settlementTimeMs,
+      },
+      direction,
+    );
 
     return {
       ...baseConversion,
@@ -199,6 +207,20 @@ export class CurrencyService {
       rate: spreadResult.adjustedRate,
       spreadResult,
     };
+  }
+
+  convertWithBuffer(
+    amount: number,
+    from: SupportedCurrency,
+    to: SupportedCurrency,
+    _provider?: string,
+    _direction: "sell" | "buy" = "sell",
+  ): ConversionResult {
+    return this.convert(amount, from, to);
+  }
+
+  convertToBase(amount: number, from: SupportedCurrency): ConversionResult {
+    return this.convert(amount, from, BASE_CURRENCY);
   }
 
   getRates(): ExchangeRates {

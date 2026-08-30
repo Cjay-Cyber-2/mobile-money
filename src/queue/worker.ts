@@ -18,6 +18,7 @@ import { StellarService } from "../services/stellar/stellarService";
 import * as highThroughputService from "../services/stellar/highThroughputService";
 import { UserModel } from "../models/users";
 import { EmailService } from "../services/email";
+import { smsService } from "../services/sms";
 import { withRetry } from "../services/retry";
 import { notifyTransactionWebhook, WebhookService } from "../services/webhook";
 import { notificationRouter } from "../services/notificationRouter";

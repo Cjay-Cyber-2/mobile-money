@@ -702,6 +702,7 @@ export interface TelecomLatencyMetric {
   operation: string;
   durationMs: number;
   success: boolean;
+  country?: string;
   statusCode?: number;
   endpoint?: string;
   timestamp?: string;

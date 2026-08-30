@@ -26,7 +26,6 @@ interface AirtelStatusResponse {
     result_code?: string;
   };
   transaction_status?: string;
-  status?: string;
 }
 
 export type AirtelTransactionStatus =
@@ -168,7 +167,7 @@ export class AirtelService extends BaseProvider {
   }
 
   public async executeWithBreaker<T>(fn: () => Promise<T>): Promise<T> {
-    return this.breaker.fire(fn);
+    return this.breaker.fire(fn) as Promise<T>;
   }
 
   async getAccessToken(): Promise<string> {
@@ -204,7 +203,7 @@ export class AirtelService extends BaseProvider {
 
       const data = response.data;
       const expiresIn = typeof data.expires_in === "number" ? data.expires_in : 3600;
-      this.setToken(data.access_token, expiresIn);
+      this.cacheToken(data.access_token, expiresIn);
       return data.access_token;
     } catch (error) {
       const durationMs = Date.now() - startTime;
@@ -335,7 +334,5 @@ export class AirtelService extends BaseProvider {
       logger.error({ reference, error: error instanceof Error ? error.message : error }, "Airtel getTransactionStatus failed");
       return { status: "unknown" };
     }
-
-    return "unknown";
   }
 }

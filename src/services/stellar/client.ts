@@ -1,9 +1,9 @@
-import { Server, Transaction } from "stellar-sdk";
+import { Horizon } from "@stellar/stellar-sdk";
 import { appConfig } from "../../config/appConfig";
 import logger from "../../utils/logger";
 
 class StellarClientManager {
-  private servers: Server[];
+  private servers: Horizon.Server[];
   private currentIndex: number = 0;
   private consecutiveFailures: number = 0;
   private threshold: number = 3;
@@ -16,10 +16,10 @@ class StellarClientManager {
       : [];
 
     const urls = [primaryUrl, ...fallbackUrls];
-    this.servers = urls.map((url) => new Server(url));
+    this.servers = urls.map((url) => new Horizon.Server(url));
   }
 
-  public getServer(): Server {
+  public getServer(): Horizon.Server {
     return this.servers[this.currentIndex];
   }
 
@@ -32,8 +32,8 @@ class StellarClientManager {
 
       logger.warn(
         {
-          previousHorizon: this.servers[previousIndex].serverUrl,
-          newHorizon: this.servers[this.currentIndex].serverUrl,
+          previousHorizon: this.servers[previousIndex].serverURL,
+          newHorizon: this.servers[this.currentIndex].serverURL,
           consecutiveFailures: this.threshold,
         },
         "[StellarClient] Horizon node failure threshold reached. Switched to fallback Horizon server."
@@ -47,7 +47,7 @@ class StellarClientManager {
     }
   }
 
-  public async executeWithFallback<T>(operation: (server: Server) => Promise<T>): Promise<T> {
+  public async executeWithFallback<T>(operation: (server: Horizon.Server) => Promise<T>): Promise<T> {
     let attempts = 0;
     const maxAttempts = this.servers.length;
 

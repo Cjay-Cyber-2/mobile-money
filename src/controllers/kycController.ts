@@ -125,12 +125,12 @@ export class KYCController {
 
       try {
         const pepService = getPepCheckService();
-        await pepService.ensureInitialized();
-        const pepMatch = await pepService.screenApplicant({
-          firstName: validatedData.first_name,
-          lastName: validatedData.last_name,
-          country: validatedData.address?.country || "",
-        });
+        await pepService.ensureSeeded();
+        const pepMatch = await pepService.screenCustomer(
+          validatedData.first_name,
+          validatedData.last_name,
+          validatedData.address?.country || "",
+        );
 
         if (pepMatch.matched) {
           logger.warn("PEP match detected for applicant", {
@@ -138,7 +138,7 @@ export class KYCController {
             userId,
             score: pepMatch.score,
           });
-          await this.kycService.flagForReview(applicant.id, "PEP match detected");
+          await pepService.flagForReview(userId, pepMatch);
         }
       } catch (pepErr) {
         logger.error("Error during PEP screening", { error: (pepErr as Error).message });
@@ -305,7 +305,8 @@ export class KYCController {
   verifyAddressProof = async (req: Request, res: Response) => {
     try {
       const validated = VerifyAddressProofSchema.parse(req.body);
-      const result = await this.zkProofService.verifyAddressProof(validated);
+      const userId = (req as any).user?.id || (req.body as any).userId || "";
+      const result = await this.zkProofService.verifyAddressProof(userId, validated);
       res.status(200).json({
         status: "success",
         data: result,
@@ -319,6 +320,26 @@ export class KYCController {
         code: (error as any).code || ERROR_CODES.INTERNAL_ERROR,
       });
     }
+  };
+
+  handleWebhook = async (_req: Request, res: Response) => {
+    res.status(200).json({ status: "success" });
+  };
+
+  getApplicant = async (req: Request, res: Response) => {
+    return this.getVerificationStatus(req, res);
+  };
+
+  getUserKYCStatus = async (req: Request, res: Response) => {
+    return this.getVerificationStatus(req, res);
+  };
+
+  issueZkCredential = async (req: Request, res: Response) => {
+    return this.issueAddressProof(req, res);
+  };
+
+  verifyZkProof = async (req: Request, res: Response) => {
+    return this.verifyAddressProof(req, res);
   };
 
   private async storeApplicantReference(userId: string, applicantId: string): Promise<void> {

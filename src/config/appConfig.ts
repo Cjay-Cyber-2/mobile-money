@@ -304,6 +304,23 @@ configSchema.validate({ allowed: "strict" });
 
 export const appConfig = configSchema.get();
 
+export function getConfig() {
+  return configSchema.get();
+}
+
 export function getConfigValue<T>(key: string): T {
   return configSchema.get(key) as T;
+}
+
+export function loadConfigFiles(env?: string): void {
+  const envName = env || process.env.NODE_ENV || "development";
+  const configDir = path.join(__dirname, "configurations");
+  const envFilePath = path.join(configDir, `${envName}.json`);
+  if (fs.existsSync(envFilePath)) {
+    configSchema.loadFile(envFilePath);
+  }
+}
+
+export function validateConfig(): void {
+  configSchema.validate({ allowed: "strict" });
 }

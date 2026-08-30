@@ -72,10 +72,10 @@ jobs:
       threshold: ${{ steps.evaluate.outputs.threshold }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: npm
@@ -145,7 +145,7 @@ jobs:
           echo "Renewal needed: $(cat $GITHUB_OUTPUT | grep needs_renewal)"
 
       - name: Upload check artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: cert-check-output
@@ -176,10 +176,10 @@ jobs:
       (github.event_name != 'pull_request' || inputs.force_renew == 'true')
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: npm
@@ -302,7 +302,7 @@ jobs:
           fi
 
       - name: Upload renewal logs
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: ssl-renewal-logs
@@ -324,10 +324,10 @@ jobs:
       (needs.renew.result == 'failure' || (needs.check.outputs.needs_renewal == 'true' && needs.renew.result == 'skipped' && github.event_name == 'schedule'))
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Create GitHub Issue on renewal failure
-        uses: actions/github-script@v8
+        uses: actions/github-script@v7
         with:
           script: |
             const expiring = '${{ needs.check.outputs.expiring_domains }}' || 'unknown';
@@ -433,7 +433,7 @@ jobs:
     if: needs.renew.result == 'success'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Trigger dependent redeploy marker
         run: |
@@ -447,7 +447,7 @@ jobs:
           cat logs/ssl-renewal.marker.json
 
       - name: Upload reload marker
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ssl-reload-marker
           path: logs/ssl-renewal.marker.json

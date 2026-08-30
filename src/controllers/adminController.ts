@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { Request, Response, Router } from "express";
 import fs from "fs";
 import path from "path";
 import winston from "winston";
@@ -342,3 +342,12 @@ export const executeColdVaultTransferHandler = async (req: AuthRequest, res: Res
     throw error.statusCode ? error : createError(ERROR_CODES.INTERNAL_ERROR, error.message || "Failed to execute cold vault transfer");
   }
 };
+
+const adminRouter = Router();
+adminRouter.get("/circuit-breakers", getCircuitBreakerStatus);
+adminRouter.post("/outage", logOutageStatus);
+adminRouter.post("/test-alert", testEngineeringAlert);
+adminRouter.post("/circuit-breakers/reset", resetCircuitBreakerStatus);
+adminRouter.get("/logs", getWinstonLogs);
+
+export default adminRouter;
