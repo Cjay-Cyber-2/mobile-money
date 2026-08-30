@@ -15,13 +15,18 @@ interface AirtelTokenResponse {
 interface AirtelStatusResponse {
   data?: {
     transaction?: {
-      status: string;
+      status?: string;
+      id?: string;
     };
+    status?: string;
   };
   status?: {
-    success: boolean;
-    code: string;
+    success?: boolean;
+    code?: string;
+    result_code?: string;
   };
+  transaction_status?: string;
+  status?: string;
 }
 
 export type AirtelTransactionStatus =
@@ -330,5 +335,7 @@ export class AirtelService extends BaseProvider {
       logger.error({ reference, error: error instanceof Error ? error.message : error }, "Airtel getTransactionStatus failed");
       return { status: "unknown" };
     }
+
+    return "unknown";
   }
 }
