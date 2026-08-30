@@ -123,11 +123,7 @@ impl VaultContract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{
-        testutils::Address as _,
-        token::StellarAssetClient,
-        Address, Env,
-    };
+    use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env};
 
     const MINT_AMOUNT: i128 = 10_000_000;
 
