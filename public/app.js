@@ -50,8 +50,61 @@ async function updateSystemStatus() {
   }
 }
 
+// Live Horizon Health Polling
+async function updateHorizonHealth() {
+  let horizonDot = document.getElementById("horizon-status-dot");
+  let horizonText = document.getElementById("horizon-status-text");
+  let horizonLatency = document.getElementById("horizon-latency");
+
+  if (!horizonDot) {
+    const statusContainer = document.querySelector(".status-container") || document.body;
+    const div = document.createElement("div");
+    div.id = "horizon-health-widget";
+    div.style.marginTop = "8px";
+    div.innerHTML = `
+      <span id="horizon-status-dot" class="status-dot offline"></span>
+      <span id="horizon-status-text" class="status-text">Horizon: Checking...</span>
+      <span id="horizon-latency" style="margin-left: 10px; font-size: 0.9em; opacity: 0.8;"></span>
+    `;
+    statusContainer.appendChild(div);
+    horizonDot = document.getElementById("horizon-status-dot");
+    horizonText = document.getElementById("horizon-status-text");
+    horizonLatency = document.getElementById("horizon-latency");
+  }
+
+  try {
+    const res = await fetch("/api/health/horizon");
+    const data = await res.json();
+    if (res.ok && data.status === "up") {
+      horizonDot.className = "status-dot online";
+      horizonText.className = "status-text online";
+      horizonText.textContent = "Horizon: Connected";
+      if (horizonLatency) {
+        horizonLatency.textContent = `(${data.latencyMs}ms)`;
+      }
+    } else {
+      horizonDot.className = "status-dot offline";
+      horizonText.className = "status-text";
+      horizonText.textContent = "Horizon: Degraded";
+      if (horizonLatency && data.latencyMs) {
+        horizonLatency.textContent = `(${data.latencyMs}ms)`;
+      }
+    }
+  } catch (error) {
+    horizonDot.className = "status-dot offline";
+    horizonText.className = "status-text";
+    horizonText.textContent = "Horizon: Offline";
+    if (horizonLatency) {
+      horizonLatency.textContent = "";
+    }
+  }
+}
+
+// Initial status check and periodic updates
 updateSystemStatus();
+updateHorizonHealth();
 setInterval(updateSystemStatus, 15000);
+setInterval(updateHorizonHealth, 15000);
 
 // Interactive Exchange Rate Calculator
 const RATES = {
@@ -121,66 +174,3 @@ if (receiveAssetSelect) {
 }
 
 calculateConversion();
-
-// SEP-24 Document Upload Retry Support in Hosted Flow
-window.handleDocumentUploadFailure = function(containerId, errorDetails) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-
-  container.innerHTML = `
-    <div class="upload-error-state">
-      <p class="error-msg">❌ Document validation failed: ${errorDetails || "Invalid file format or verification error."}</p>
-      <button id="retry-upload-btn" class="btn btn-primary">
-        Retry Upload
-      </button>
-    </div>
-  `;
-
-  const retryBtn = container.querySelector("#retry-upload-btn");
-  if (retryBtn) {
-    retryBtn.addEventListener("click", async () => {
-      retryBtn.disabled = true;
-      retryBtn.textContent = "Cleaning storage & retrying...";
-      
-      try {
-        const applicantId = container.dataset.applicantId;
-        const docType = container.dataset.docType;
-        const fileInput = document.getElementById(container.dataset.fileInputId);
-        
-        if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-          throw new Error("Please select a valid document file to retry.");
-        }
-
-        const file = fileInput.files[0];
-        const reader = new FileReader();
-
-        reader.onload = async function(e) {
-          const base64Data = e.target.result.split(",")[1];
-          const payload = {
-            applicant_id: applicantId,
-            type: docType,
-            filename: file.name,
-            data: base64Data
-          };
-
-          const res = await fetch("/api/kyc/documents/retry", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-          });
-
-          const resultJson = await res.json();
-          if (res.ok) {
-            container.innerHTML = `<p class="success-msg">✅ Document successfully re-uploaded and verified!</p>`;
-          } else {
-            throw new Error(resultJson.message || "Retry upload failed");
-          }
-        };
-
-        reader.readAsDataURL(file);
-      } catch (err) {
-        window.handleDocumentUploadFailure(containerId, err.message);
-      }
-    });
-  }
-};
