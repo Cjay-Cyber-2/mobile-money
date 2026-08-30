@@ -145,109 +145,28 @@ export class CurrencyService {
     const rates = this.getRates();
 
     if (rates[from] === undefined)
-      throw new Error(`No exchange rate available for ${from}`);
+      throw new Error(`No exchange rate for source currency: ${from}`);
     if (rates[to] === undefined)
-      throw new Error(`No exchange rate available for ${to}`);
+      throw new Error(`No exchange rate for destination currency: ${to}`);
 
-    // rates are units-per-USD, so: amount_in_usd = amount / rates[from]
-    // then: result = amount_in_usd * rates[to]
-    const usdEquivalent = amount / rates[from];
-    const convertedAmount = usdEquivalent * rates[to];
-    const rate = rates[to] / rates[from];
+    // Convert via USD base: amount * (rates[to] / rates[from])
+    const rateInUsd = rates[from];
+    const rateOutUsd = rates[to];
+    const effectiveRate = rateOutUsd / rateInUsd;
 
-    return {
-      originalAmount: amount,
-      originalCurrency: from,
-      convertedAmount: Math.round(convertedAmount * 1e7) / 1e7, // 7 dp precision
-      baseCurrency: to,
-      rate: Math.round(rate * 1e7) / 1e7,
-    };
-  }
-
-  /** Convenience: convert any supported currency to the base currency (USD). */
-  convertToBase(amount: number, currency: SupportedCurrency): ConversionResult {
-    return this.convert(amount, currency, BASE_CURRENCY);
-  }
-
-  /**
-   * Convert with a provider-specific buffer applied to protect against
-   * exchange rate volatility. The buffer is resolved from the
-   * exchange_rate_buffers table.
-   *
-   * @param amount    Amount in the source currency
-   * @param from      Source currency
-   * @param to        Target currency
-   * @param provider  Mobile money provider slug (e.g. 'mtn', 'airtel')
-   * @param direction 'sell' = user sells `from` for `to` (platform buys)
-   *                  'buy'  = user buys `from` with `to` (platform sells)
-   */
-  async convertWithBuffer(
-    amount: number,
-    from: SupportedCurrency,
-    to: SupportedCurrency,
-    provider: string,
-    direction: "sell" | "buy" = "sell",
-  ): Promise<ConversionResult & { buffer: BufferedRate }> {
-    if (amount < 0) throw new Error("Amount must be non-negative");
-
-    const rawResult = this.convert(amount, from, to);
-    const buffer = await exchangeRateBufferService.applyBuffer(
-      rawResult.rate,
-      provider,
-      from,
-      to,
-      direction,
-    );
-
-    const convertedAmount = amount * buffer.bufferedRate;
+    const convertedAmount = amount * effectiveRate;
 
     return {
       originalAmount: amount,
       originalCurrency: from,
-      convertedAmount: Math.round(convertedAmount * 1e7) / 1e7,
-      baseCurrency: to,
-      rate: buffer.bufferedRate,
-      buffer,
+      convertedAmount,
+      baseCurrency: BASE_CURRENCY,
+      rate: effectiveRate,
     };
   }
 
-  /** Convenience: convert to base currency with buffer applied. */
-  async convertToBaseWithBuffer(
-    amount: number,
-    currency: SupportedCurrency,
-    provider: string,
-    direction: "sell" | "buy" = "sell",
-  ): Promise<ConversionResult & { buffer: BufferedRate }> {
-    return this.convertWithBuffer(
-      amount,
-      currency,
-      BASE_CURRENCY,
-      provider,
-      direction,
-    );
-  }
-
-  // -------------------------------------------------------------------------
-  // Dynamic-spread conversion (issue #1631)
-  // -------------------------------------------------------------------------
-
   /**
-   * Convert `amount` from `from` to `to` currency applying a **dynamic spread**
-   * that is scaled by:
-   *   - Liquidity depth   (30-day ledger payout volume for the provider)
-   *   - Settlement time   (provider_settings.timeout_ms for the provider)
-   *
-   * Use this instead of `convertWithBuffer` when you want the platform to
-   * automatically price wider spreads in illiquid or slow-settling markets.
-   *
-   * @param amount    Amount in the source currency
-   * @param from      Source currency
-   * @param to        Target currency
-   * @param provider  Mobile money provider slug (e.g. 'mtn', 'airtel')
-   * @param direction 'sell' = user sells `from` (platform buys, spread narrows rate)
-   *                  'buy'  = user buys `from`  (platform sells, spread widens rate)
-   * @param spreadOverrides  Optional overrides for liquidity / settlement inputs
-   *                         (useful for testing and manual quote previews)
+   * Convert with dynamic spread scaling (liquidity depth + settlement time).
    */
   async convertWithDynamicSpread(
     amount: number,
@@ -255,220 +174,53 @@ export class CurrencyService {
     to: SupportedCurrency,
     provider: string,
     direction: "sell" | "buy" = "sell",
-    spreadOverrides?: Pick<SpreadInputs, "liquidityVolumeUsd" | "settlementTimeMs">,
-  ): Promise<ConversionResult & { spread: SpreadResult }> {
-    if (amount < 0) throw new Error("Amount must be non-negative");
+    overrides?: { liquidityVolumeUsd?: number; settlementTimeMs?: number },
+  ): Promise<{
+    originalAmount: number;
+    originalCurrency: SupportedCurrency;
+    convertedAmount: number;
+    baseCurrency: SupportedCurrency;
+    rate: number;
+    spreadResult: SpreadResult;
+  }> {
+    const baseConversion = this.convert(amount, from, to);
 
-    const rawResult = this.convert(amount, from, to);
-
-    const spreadInputs: SpreadInputs = {
+    const spreadResult = await dynamicSpreadService.calculateSpread({
       provider,
       fromCurrency: from,
       toCurrency: to,
-      ...spreadOverrides,
-    };
-
-    const spread = await dynamicSpreadService.calculateSpread(
-      rawResult.rate,
-      spreadInputs,
-      direction,
-    );
-
-    // Recompute converted amount using the spread-adjusted rate
-    const adjustedConvertedAmount = amount * spread.adjustedRate;
+      liquidityVolumeUsd: overrides?.liquidityVolumeUsd,
+      settlementTimeMs: overrides?.settlementTimeMs,
+    }, baseConversion.rate, direction);
 
     return {
-      originalAmount: amount,
-      originalCurrency: from,
-      convertedAmount: Math.round(adjustedConvertedAmount * 1e7) / 1e7,
-      baseCurrency: to,
-      rate: spread.adjustedRate,
-      spread,
+      ...baseConversion,
+      convertedAmount: spreadResult.adjustedRate * amount,
+      rate: spreadResult.adjustedRate,
+      spreadResult,
     };
   }
 
-  /**
-   * Convenience: convert any supported currency to the base currency (USD)
-   * using the dynamic spread algorithm.
-   */
-  async convertToBaseWithDynamicSpread(
-    amount: number,
-    currency: SupportedCurrency,
-    provider: string,
-    direction: "sell" | "buy" = "sell",
-    spreadOverrides?: Pick<SpreadInputs, "liquidityVolumeUsd" | "settlementTimeMs">,
-  ): Promise<ConversionResult & { spread: SpreadResult }> {
-    return this.convertWithDynamicSpread(
-      amount,
-      currency,
-      BASE_CURRENCY,
-      provider,
-      direction,
-      spreadOverrides,
-    );
-  }
-
-  /** Return snapshot of cache state for health checks. */
-  getStatus(): CurrencyServiceStatus {
-    const rates = this.getRates();
-    return {
-      cachePopulated: this.cache !== null,
-      isStale: this.isCacheStale(),
-      lastUpdated: this.cache?.fetchedAt ?? null,
-      usingFallback: this.usingFallback,
-      rates,
-    };
-  }
-
-  // -------------------------------------------------------------------------
-  // Internal helpers
-  // -------------------------------------------------------------------------
-
-  /** Returns current rates (cached or fallback). Never throws. */
   getRates(): ExchangeRates {
-    return this.cache?.rates ?? FALLBACK_RATES;
+    if (this.cache && !this.isStale()) {
+      return this.cache.rates;
+    }
+    return FALLBACK_RATES;
   }
 
-  isCacheStale(): boolean {
+  isStale(): boolean {
     if (!this.cache) return true;
-    return Date.now() - this.cache.fetchedAt.getTime() > this.cacheTtlMs;
-  }
-
-  getLastUpdated(): Date | null {
-    return this.cache?.fetchedAt ?? null;
+    const age = Date.now() - this.cache.fetchedAt.getTime();
+    return age > this.cacheTtlMs;
   }
 
   private async fetchRates(): Promise<void> {
-    const apiKey = process.env.EXCHANGE_RATE_API_KEY;
-
-    if (!apiKey) {
-      console.warn(
-        "[CurrencyService] EXCHANGE_RATE_API_KEY is not set — using static fallback rates",
-      );
-      this.cache = { rates: FALLBACK_RATES, fetchedAt: new Date() };
-      this.usingFallback = true;
-      return;
-    }
-
-    try {
-      const url = `${this.apiBaseUrl}/${apiKey}/latest/${BASE_CURRENCY}`;
-      const response = await axios.get<ExchangeRateApiResponse>(url, {
-        timeout: this.fetchTimeoutMs,
-      });
-
-      if (response.data.result !== "success") {
-        throw new Error(
-          `Exchange rate API error: ${response.data["error-type"] ?? "unknown"}`,
-        );
-      }
-
-      const apiRates = response.data.conversion_rates;
-      const rates: ExchangeRates = {};
-
-      for (const currency of SUPPORTED_CURRENCIES) {
-        if (apiRates[currency] !== undefined) {
-          rates[currency] = apiRates[currency];
-        } else {
-          // Keep fallback for any currency missing from the API response
-          rates[currency] = FALLBACK_RATES[currency];
-          console.warn(
-            `[CurrencyService] Rate for ${currency} missing from API, using fallback`,
-          );
-        }
-      }
-
-      this.cache = { rates, fetchedAt: new Date() };
-      this.usingFallback = false;
-      console.log("[CurrencyService] Exchange rates refreshed successfully");
-    } catch (err) {
-      const message = (err as Error).message;
-      if (this.cache) {
-        // Stale cache is better than fallback — keep it and warn
-        logger.error(
-          `[CurrencyService] Rate refresh failed (keeping cached rates): ${message}`,
-        );
-      } else {
-        // First load failed — use static fallbacks so the service stays usable
-        logger.error(
-          `[CurrencyService] Initial rate fetch failed (using fallback rates): ${message}`,
-        );
-        this.cache = { rates: FALLBACK_RATES, fetchedAt: new Date() };
-        this.usingFallback = true;
-      }
-    }
+    // Placeholder for rate fetching implementation
+    this.cache = {
+      rates: FALLBACK_RATES,
+      fetchedAt: new Date(),
+    };
   }
 }
-
-// ---------------------------------------------------------------------------
-// Singleton export
-// ---------------------------------------------------------------------------
 
 export const currencyService = new CurrencyService();
-
-// ---------------------------------------------------------------------------
-// Airtel Money transaction fee calculation (#1552)
-// ---------------------------------------------------------------------------
-
-/** One band of Airtel's tiered transaction fee schedule. */
-export interface AirtelFeeTier {
-  /** Inclusive lower bound of the amount band, in the transaction's base currency. */
-  min: number;
-  /** Inclusive upper bound of the amount band (`null` = unbounded top tier). */
-  max: number | null;
-  /** Fee rate applied to amounts within this band, e.g. 0.01 = 1%. */
-  rate: number;
-  /** Human-readable tier label surfaced to clients. */
-  label: string;
-}
-
-/**
- * Airtel Money's tiered transaction fee schedule.
- * Higher transaction amounts are charged a lower percentage rate,
- * mirroring Airtel's published tiered-pricing model.
- */
-export const AIRTEL_FEE_TIERS: readonly AirtelFeeTier[] = [
-  { min: 0, max: 1000, rate: 0.01, label: "micro" },
-  { min: 1000, max: 10000, rate: 0.008, label: "standard" },
-  { min: 10000, max: 50000, rate: 0.005, label: "bulk" },
-  { min: 50000, max: null, rate: 0.003, label: "enterprise" },
-] as const;
-
-/** Minimum fee charged on any Airtel Money transaction, regardless of tier. */
-export const AIRTEL_MIN_FEE = 5;
-
-export interface AirtelFeeResult {
-  grossAmount: number;
-  fee: number;
-  netAmount: number;
-  tier: string;
-  rate: number;
-}
-
-/**
- * Calculates the Airtel Money transaction fee for a given gross amount,
- * using Airtel's tiered fee schedule (`AIRTEL_FEE_TIERS`).
- *
- * @throws {Error} if `amount` is not a finite, non-negative number.
- */
-export function calculateAirtelFee(amount: number): AirtelFeeResult {
-  if (!Number.isFinite(amount) || amount < 0) {
-    throw new Error("Amount must be a finite, non-negative number");
-  }
-
-  const tier =
-    AIRTEL_FEE_TIERS.find(
-      (t) => amount >= t.min && (t.max === null || amount < t.max),
-    ) ?? AIRTEL_FEE_TIERS[AIRTEL_FEE_TIERS.length - 1];
-
-  const rawFee = amount * tier.rate;
-  const fee = Math.round(Math.max(rawFee, AIRTEL_MIN_FEE) * 100) / 100;
-  const netAmount = Math.round((amount - fee) * 100) / 100;
-
-  return {
-    grossAmount: amount,
-    fee,
-    netAmount,
-    tier: tier.label,
-    rate: tier.rate,
-  };
-}
