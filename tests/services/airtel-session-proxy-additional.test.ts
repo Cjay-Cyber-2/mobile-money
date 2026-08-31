@@ -184,6 +184,39 @@ describe("AirtelService - Additional Session Proxy Tests", () => {
       );
       expect(mockClient.get).not.toHaveBeenCalled();
     });
+
+    it("should return a controlled error for null web balance responses", async () => {
+      const mockClient = { post: jest.fn(), get: jest.fn() };
+      const now = 1000000;
+
+      const service = new AirtelService({
+        mode: "web",
+        httpClient: mockClient,
+        clock: () => now,
+        username: "user",
+        password: "pass",
+      });
+
+      (service as any).session = {
+        cookies: { sid: { value: "cached" } },
+        csrfToken: "csrf-token",
+        expiresAt: now + 300000,
+        authenticatedAt: now - 10000,
+      };
+
+      mockClient.get = jest.fn().mockResolvedValueOnce({
+        status: 200,
+        data: null,
+        headers: {},
+      });
+
+      const result = await service.getOperationalBalance();
+
+      expect(result.success).toBe(false);
+      expect((result.error as Error).message).toBe(
+        "Airtel balance response body was empty",
+      );
+    });
   });
 
   describe("East Africa currency validation", () => {
@@ -431,6 +464,32 @@ describe("AirtelService - Additional Session Proxy Tests", () => {
       expect(result.data?.availableBalance).toBe(0);
     });
 
+    it("should return a controlled error for null direct balance responses", async () => {
+      const mockClient = { post: jest.fn(), get: jest.fn() };
+
+      const service = new AirtelService({
+        mode: "direct",
+        directHttpClient: mockClient,
+      });
+
+      mockClient.post = jest.fn().mockResolvedValueOnce({
+        status: 200,
+        data: { access_token: "token", expires_in: 3600 },
+      });
+
+      mockClient.get = jest.fn().mockResolvedValueOnce({
+        status: 200,
+        data: null,
+      });
+
+      const result = await service.getOperationalBalance();
+
+      expect(result.success).toBe(false);
+      expect((result.error as Error).message).toBe(
+        "Airtel balance response body was empty",
+      );
+    });
+
     it("should handle non-finite balance values", async () => {
       const mockClient = { post: jest.fn(), get: jest.fn() };
 
@@ -529,6 +588,29 @@ describe("AirtelService - Additional Session Proxy Tests", () => {
   });
 
   describe("Direct mode token expiry", () => {
+    it("should fail gracefully when direct auth body is null", async () => {
+      const mockClient = { post: jest.fn(), get: jest.fn() };
+
+      const service = new AirtelService({
+        mode: "direct",
+        directHttpClient: mockClient,
+      });
+
+      mockClient.post = jest.fn().mockResolvedValueOnce({
+        status: 200,
+        data: null,
+      });
+
+      await expect(
+        service.sendPayout("2348012345678", "1000"),
+      ).resolves.toMatchObject({
+        success: false,
+        error: expect.objectContaining({
+          message: "Airtel direct auth did not return access_token",
+        }),
+      });
+    });
+
     it("should refresh token when expired", async () => {
       const mockClient = { post: jest.fn(), get: jest.fn() };
       const now = 1000000;

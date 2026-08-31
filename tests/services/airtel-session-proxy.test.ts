@@ -571,6 +571,28 @@ describe("AirtelService - Session Proxy Wrapper", () => {
       expect(result.data?.availableBalance).toBe(100000);
     });
 
+    it("should return a controlled error when proxy balance body is null", async () => {
+      const mockClient = { get: jest.fn() };
+
+      const service = new AirtelService({
+        mode: "proxy",
+        proxyHttpClient: mockClient,
+      });
+
+      mockClient.get = jest.fn().mockResolvedValueOnce({
+        status: 200,
+        data: null,
+        headers: {},
+      });
+
+      const result = await service.getOperationalBalance();
+
+      expect(result.success).toBe(false);
+      expect((result.error as Error).message).toBe(
+        "Airtel balance response body was empty",
+      );
+    });
+
     it("should work without proxy secret if not configured", async () => {
       const mockClient = { post: jest.fn() };
 
