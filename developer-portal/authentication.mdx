@@ -3,7 +3,7 @@ title: 'Authentication'
 description: 'Secure your API requests with JWT tokens or API keys'
 ---
 
-The Mobile Money Bridge API offers two main methods of authentication depending on your integration needs: simple API Keys and robust JWT Bearer tokens.
+The Mobile Money API offers two main methods of authentication depending on your integration needs: simple API Keys and robust JWT Bearer tokens.
 
 ## API Key Authentication
 
@@ -11,7 +11,7 @@ The simplest way to authenticate is by passing your API key in the `X-API-Key` h
 
 ```bash
 curl --request GET \
-  --url https://api.mobilemoney.bridge/v1/quotes \
+  --url https://api.mobilemoney.dev/v1/quotes \
   --header 'X-API-Key: your_live_or_test_key_here'
 ```
 
@@ -26,7 +26,7 @@ For enterprise-grade security, particularly in complex architectures or when act
 
 ```bash
 curl --request POST \
-  --url https://api.mobilemoney.bridge/oauth2/token \
+  --url https://api.mobilemoney.dev/oauth2/token \
   --header 'Content-Type: application/x-www-form-urlencoded' \
   --data 'grant_type=client_credentials&client_id=YOUR_CLIENT_ID&client_secret=YOUR_CLIENT_SECRET'
 ```
@@ -44,7 +44,7 @@ curl --request POST \
 
 ```bash
 curl --request GET \
-  --url https://api.mobilemoney.bridge/v1/transactions \
+  --url https://api.mobilemoney.dev/v1/transactions \
   --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5c...'
 ```
 

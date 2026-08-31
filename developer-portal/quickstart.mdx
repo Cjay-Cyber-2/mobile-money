@@ -1,6 +1,6 @@
 ---
 title: 'Quickstart'
-description: 'Start integrating with Mobile Money Bridge in 5 minutes'
+description: 'Start integrating with Mobile Money in 5 minutes'
 ---
 
 <Steps>
@@ -14,13 +14,13 @@ description: 'Start integrating with Mobile Money Bridge in 5 minutes'
     <CodeGroup>
       ```bash cURL
       curl --request GET \
-        --url 'https://api.mobilemoney.bridge/v1/quotes?source_asset=XAF&dest_asset=USDC&amount=10000' \
+        --url 'https://api.mobilemoney.dev/v1/quotes?source_asset=XAF&dest_asset=USDC&amount=10000' \
         --header 'X-API-Key: YOUR_API_KEY'
       ```
       ```typescript TypeScript
-      import { MobileMoneyBridge } from '@sublime247/mobile-money';
+      import { MobileMoneyClient } from '@sublime247/mobile-money';
 
-      const client = new MobileMoneyBridge('YOUR_API_KEY');
+      const client = new MobileMoneyClient('YOUR_API_KEY');
       const quote = await client.quotes.get({
         sourceAsset: 'XAF',
         destAsset: 'USDC',
@@ -56,7 +56,7 @@ description: 'Start integrating with Mobile Money Bridge in 5 minutes'
     <CodeGroup>
       ```bash cURL
       curl --request POST \
-        --url https://api.mobilemoney.bridge/v1/transactions/deposit \
+        --url https://api.mobilemoney.dev/v1/transactions/deposit \
         --header 'Content-Type: application/json' \
         --header 'X-API-Key: YOUR_API_KEY' \
         --data '{
@@ -106,7 +106,7 @@ description: 'Start integrating with Mobile Money Bridge in 5 minutes'
     <CodeGroup>
       ```bash cURL
       curl --request GET \
-        --url https://api.mobilemoney.bridge/v1/transactions/txn_789012 \
+        --url https://api.mobilemoney.dev/v1/transactions/txn_789012 \
         --header 'X-API-Key: YOUR_API_KEY'
       ```
       ```typescript TypeScript
@@ -124,7 +124,7 @@ description: 'Start integrating with Mobile Money Bridge in 5 minutes'
     <CodeGroup>
       ```bash cURL
       curl --request POST \
-        --url https://api.mobilemoney.bridge/v1/webhooks \
+        --url https://api.mobilemoney.dev/v1/webhooks \
         --header 'Content-Type: application/json' \
         --header 'X-API-Key: YOUR_API_KEY' \
         --data '{
