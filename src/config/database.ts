@@ -5,6 +5,7 @@ import { isReadOnlyQuery } from "../utils/readOnlyDetector";
 import { dbReplicaLagSeconds, dbReplicaReadEnabled } from "../utils/metrics";
 import { startDeadlockDetector } from "./deadlockDetector";
 import { IS_SANDBOX, SANDBOX_DATABASE_URL, DATABASE_URL, DR_DATABASE_URL } from "./env";
+import { isTransientDatabaseConnectionError } from "./databaseErrors";
 
 
 const isDRMode = (): boolean => !!DR_DATABASE_URL;
@@ -122,28 +123,6 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isTransientDatabaseError(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-
-  const candidate = error as { code?: string; message?: string };
-  const code = candidate.code?.toUpperCase() ?? "";
-  const message = candidate.message?.toLowerCase() ?? "";
-
-  return (
-    code === "ECONNRESET" ||
-    code === "ECONNREFUSED" ||
-    code === "ETIMEDOUT" ||
-    code === "57P01" ||
-    code === "08006" ||
-    code === "40P01" ||
-    message.includes("connection terminated") ||
-    message.includes("terminated unexpectedly") ||
-    message.includes("connection lost") ||
-    message.includes("disconnect") ||
-    message.includes("timeout") ||
-    message.includes("socket")
-  );
-}
 
 /**
  * Sanitizes a SQL query by removing sensitive data patterns
@@ -395,7 +374,10 @@ async function executeWithRetry<T>(
     } catch (error) {
       lastError = error;
 
-      if (!isTransientDatabaseError(error) || attempt === PRIMARY_POOL_MAX_RETRIES - 1) {
+      if (
+        !isTransientDatabaseConnectionError(error) ||
+        attempt === PRIMARY_POOL_MAX_RETRIES - 1
+      ) {
         throw error;
       }
 
