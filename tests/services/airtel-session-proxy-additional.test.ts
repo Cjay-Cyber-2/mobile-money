@@ -97,6 +97,93 @@ describe("AirtelService - Additional Session Proxy Tests", () => {
       );
       expect(loginCalls.length).toBe(1);
     });
+
+    it("should anchor fallback expiry to successful login time", async () => {
+      const mockClient = { post: jest.fn(), get: jest.fn() };
+      let now = 1000000;
+      const sessionTtlMs = 5000;
+
+      const service = new AirtelService({
+        mode: "web",
+        httpClient: mockClient,
+        sessionTtlMs,
+        clock: () => now,
+        username: "user",
+        password: "pass",
+      });
+
+      mockClient.get = jest.fn().mockResolvedValueOnce({
+        status: 200,
+        data: "<html><input name='_csrf' value='csrf-token'/></html>",
+        headers: { "set-cookie": ["sid=prelogin; Path=/"] },
+      });
+
+      mockClient.post = jest
+        .fn()
+        .mockImplementationOnce(async () => {
+          now += 2000;
+          return {
+            status: 200,
+            data: { success: true },
+            headers: { "set-cookie": ["sid=logged-in; Path=/"] },
+          };
+        })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: { transaction: { id: "tx-login" } },
+          headers: {},
+        });
+
+      const result = await service.sendPayout("2348012345678", "500");
+
+      expect(result.success).toBe(true);
+      expect(service["session"]).toEqual(
+        expect.objectContaining({
+          expiresAt: now + sessionTtlMs,
+          authenticatedAt: now,
+        }),
+      );
+    });
+
+    it("should not extend cached session expiry on ordinary requests", async () => {
+      const mockClient = { post: jest.fn(), get: jest.fn() };
+      const now = 1000000;
+      const expiresAt = now + 300000;
+      const authenticatedAt = now - 10000;
+
+      const service = new AirtelService({
+        mode: "web",
+        httpClient: mockClient,
+        refreshSkewMs: 60000,
+        clock: () => now,
+        username: "user",
+        password: "pass",
+      });
+
+      (service as any).session = {
+        cookies: { sid: { value: "cached" } },
+        csrfToken: "csrf-token",
+        expiresAt,
+        authenticatedAt,
+      };
+
+      mockClient.post = jest.fn().mockResolvedValueOnce({
+        status: 200,
+        data: { transaction: { id: "tx-existing-session" } },
+        headers: { "set-cookie": ["sid=updated; Path=/"] },
+      });
+
+      const result = await service.sendPayout("2348012345678", "500");
+
+      expect(result.success).toBe(true);
+      expect(service["session"]).toEqual(
+        expect.objectContaining({
+          expiresAt,
+          authenticatedAt,
+        }),
+      );
+      expect(mockClient.get).not.toHaveBeenCalled();
+    });
   });
 
   describe("East Africa currency validation", () => {
