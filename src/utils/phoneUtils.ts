@@ -200,7 +200,10 @@ export function formatPhoneNumber(
 /**
  * Detect mobile operator based on phone number prefix matching.
  */
-export function detectProvider(phoneNumber: string): MobileProvider | null {
+export function detectProvider(
+  phoneNumber: string,
+  countryOverride?: CountryCode,
+): MobileProvider | null {
   if (typeof phoneNumber !== "string") return null;
   const sanitized = phoneNumber.replace(/\D/g, "");
 
@@ -210,17 +213,32 @@ export function detectProvider(phoneNumber: string): MobileProvider | null {
     }
   }
 
+  // If not matching directly, try resolving with countryOverride or default region
+  if (countryOverride) {
+    const parsed = parseFlexiblePhoneNumber(phoneNumber, countryOverride);
+    if (parsed?.isValid()) {
+      const fullDigits = parsed.number.replace(/^\+/, "");
+      for (const [provider, prefixes] of Object.entries(PROVIDER_PREFIXES)) {
+        if (prefixes.some((prefix) => fullDigits.startsWith(prefix))) {
+          return provider as MobileProvider;
+        }
+      }
+    }
+  }
+
   return null;
 }
 
 /**
  * Validates if a phone number belongs to the specified provider.
- * @param phoneNumber E.164 formatted number (e.g., +25677...)
+ * @param phoneNumber E.164 or national formatted number
  * @param provider The provider selected in the request
+ * @param countryOverride Optional country code override (e.g., 'UG', 'GH', 'TZ', 'CM', 'KE', 'CI', 'SN')
  */
 export function validatePhoneProviderMatch(
   phoneNumber: string,
   provider: string,
+  countryOverride?: CountryCode,
 ): { valid: boolean; error?: string } {
   if (typeof phoneNumber !== "string" || !phoneNumber.trim()) {
     return { valid: false, error: "Phone number is required" };
@@ -237,7 +255,19 @@ export function validatePhoneProviderMatch(
     return { valid: false, error: `Unsupported provider: ${provider}` };
   }
 
-  const isMatch = prefixes.some((prefix) => sanitized.startsWith(prefix));
+  let isMatch = prefixes.some((prefix) => sanitized.startsWith(prefix));
+
+  if (!isMatch) {
+    const region =
+      countryOverride ||
+      PROVIDER_PHONE_FORMATS[targetProvider]?.defaultRegion ||
+      "CM";
+    const parsed = parseFlexiblePhoneNumber(phoneNumber, region);
+    if (parsed?.isValid()) {
+      const fullDigits = parsed.number.replace(/^\+/, "");
+      isMatch = prefixes.some((prefix) => fullDigits.startsWith(prefix));
+    }
+  }
 
   if (!isMatch) {
     return {
@@ -253,10 +283,12 @@ export function validatePhoneProviderMatch(
  * Format a phone number according to provider-specific payload requirements.
  * Airtel payouts in particular may require a national-format MSISDN in some
  * regions, so we normalize user input before building the request payload.
+ * Accepts an optional countryOverride to allow overriding the default provider region.
  */
 export function formatPhoneForProvider(
   phoneNumber: string,
   provider: string,
+  countryOverride?: CountryCode,
 ): string {
   if (typeof provider !== "string") {
     throw new Error(`Unsupported provider: ${provider}`);
@@ -269,8 +301,9 @@ export function formatPhoneForProvider(
     throw new Error(`Unsupported provider: ${provider}`);
   }
 
-  const parsed = parseFlexiblePhoneNumber(phoneNumber, config.defaultRegion);
-  if (!parsed) {
+  const region = countryOverride || config.defaultRegion;
+  const parsed = parseFlexiblePhoneNumber(phoneNumber, region);
+  if (!parsed || !parsed.isValid()) {
     throw new Error(`Invalid phone number for ${provider}: ${phoneNumber}`);
   }
 

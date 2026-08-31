@@ -230,12 +230,63 @@ describe("phoneUtils", () => {
       expect(res.error).toContain("does not belong to the AIRTEL network");
     });
 
+    it("validates local phone numbers with country prefix overrides", () => {
+      // Uganda MTN local number with country override
+      expect(
+        validatePhoneProviderMatch("0770000000", "mtn", "UG").valid,
+      ).toBe(true);
+
+      // Ghana MTN local number with country override
+      expect(
+        validatePhoneProviderMatch("0240000000", "mtn", "GH").valid,
+      ).toBe(true);
+
+      // Uganda Airtel local number with country override
+      expect(
+        validatePhoneProviderMatch("0700000000", "airtel", "UG").valid,
+      ).toBe(true);
+
+      // Tanzania Vodacom local number with country override
+      expect(
+        validatePhoneProviderMatch("0740000000", "vodacom", "TZ").valid,
+      ).toBe(true);
+
+      // Cameroon MTN local number
+      expect(
+        validatePhoneProviderMatch("670000000", "mtn", "CM").valid,
+      ).toBe(true);
+    });
+
     it("returns invalid for unsupported provider or empty input", () => {
       expect(validatePhoneProviderMatch("+237670000000", "unknown").valid).toBe(
         false,
       );
       expect(validatePhoneProviderMatch("", "mtn").valid).toBe(false);
       expect(validatePhoneProviderMatch("+237670000000", "").valid).toBe(false);
+    });
+  });
+
+  describe("detectProvider with countryOverride", () => {
+    it("detects provider from local number with country override", () => {
+      expect(detectProvider("0770000000", "UG")).toBe("mtn");
+      expect(detectProvider("0700000000", "UG")).toBe("airtel");
+      expect(detectProvider("0240000000", "GH")).toBe("mtn");
+      expect(detectProvider("0740000000", "TZ")).toBe("vodacom");
+      expect(detectProvider("670000000", "CM")).toBe("mtn");
+    });
+  });
+
+  describe("formatPhoneForProvider with countryOverride", () => {
+    it("formats local number with country override", () => {
+      expect(formatPhoneForProvider("0770000000", "mtn", "UG")).toBe(
+        "+256770000000",
+      );
+      expect(formatPhoneForProvider("0700000000", "airtel", "UG")).toBe(
+        "700000000",
+      );
+      expect(formatPhoneForProvider("0240000000", "mtn", "GH")).toBe(
+        "+233240000000",
+      );
     });
   });
 

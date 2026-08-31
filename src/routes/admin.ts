@@ -300,7 +300,7 @@ const form=document.getElementById('filters'), rows=document.getElementById('row
 let page=1, totalPages=1;
 function cell(row,value, className){const el=document.createElement(row);el.textContent=value ?? '';if(className)el.className=className;return el;}
 async function load(){const params=new URLSearchParams(new FormData(form));params.set('page',page);params.set('limit','50');status.textContent='Loading...';
-try{const response=await fetch('/api/admin/audit-logs?'+params,{credentials:'include'});if(!response.ok)throw new Error('HTTP '+response.status);const result=await response.json();rows.replaceChildren();
+try{const response=await fetch('/api/admin/audit-logs?'+params,{credentials:'include'});if(response.status===401||response.status===403){status.innerHTML='Session expired. Please <a href="/api/auth/login" style="color:#155eef;">log in</a> again.';rows.replaceChildren();return;}if(!response.ok)throw new Error('HTTP '+response.status);const result=await response.json();rows.replaceChildren();
 result.data.forEach(log=>{const tr=document.createElement('tr');[new Date(log.createdAt).toLocaleString(),log.adminId,log.action,log.resource,log.resourceId,log.ipAddress,log.userAgent].forEach(value=>tr.appendChild(cell('td',value)));tr.appendChild(cell('td',JSON.stringify(log.diff,null,2),'diff'));rows.appendChild(tr)});
 totalPages=result.pagination.totalPages;pageLabel.textContent='Page '+result.pagination.page+' of '+Math.max(totalPages,1)+' ('+result.pagination.total+' entries)';status.textContent=result.data.length?'':'No audit entries found';document.getElementById('previous').disabled=page<=1;document.getElementById('next').disabled=page>=totalPages;
 }catch(error){status.textContent='Unable to load audit trail';rows.replaceChildren()}}
@@ -2401,10 +2401,16 @@ router.get(
  <div id="status"></div>
 <script>
 const fmt = (n) => '$' + n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+let pollInterval = null;
 
 async function load() {
   try {
     const r = await fetch('/api/admin/financial/pnl', {credentials:'include'});
+    if (r.status === 401 || r.status === 403) {
+      if (pollInterval) clearInterval(pollInterval);
+      document.querySelector('.chart-box').innerHTML = '<div class="error" style="text-align:center;padding:24px;"><h3>Session Expired</h3><p style="margin:12px 0 16px;color:#94a3b8;">Your administrative session has timed out. Please log in again to continue.</p><a href="/api/auth/login" style="display:inline-block;background:#3b82f6;color:white;padding:8px 16px;border-radius:6px;text-decoration:none;font-weight:600;">Log In</a></div>';
+      return;
+    }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const {rows, totals} = await r.json();
 
@@ -2465,6 +2471,10 @@ function copyRef(ref) {
   
   try {
     const r = await fetch('/api/admin/transactions?reference=' + encodeURIComponent(ref), {credentials:'include'});
+    if (r.status === 401 || r.status === 403) {
+      empty.innerHTML = 'Session expired. Please <a href="/api/auth/login" style="color:#60a5fa;">log in</a> again.';
+      return;
+    }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const {data} = await r.json();
     
@@ -2507,7 +2517,7 @@ function copyRef(ref) {
 document.getElementById('txSearch').onkeydown = (e) => { if(e.key === 'Enter') searchTx(); };
 
 load();
-setInterval(load, 60000);
+pollInterval = setInterval(load, 60000);
 </script>
 </body>
 </html>`);
@@ -2821,7 +2831,7 @@ function params(){const p = new URLSearchParams();['search','country','provider'
 function setMessage(text, cls){el('message').className = 'message ' + (cls || ''); el('message').textContent = text;}
 async function loadFacets(){const r = await fetch(api + '/facets', {credentials:'include'}); if(!r.ok) return; const f = await r.json(); fill('country', f.countries); fill('provider', f.providers); fill('tag', f.tags);}
 function fill(id, values){const first = el(id).options[0].outerHTML; el(id).innerHTML = first + (values || []).map(v => '<option value="' + esc(v) + '">' + esc(v) + '</option>').join('');}
-async function loadDocs(){const r = await fetch(api + '?' + params().toString(), {credentials:'include'}); const box = el('docs'); if(!r.ok){box.innerHTML='<div class="empty error">Failed to load documents</div>'; return;} const json = await r.json(); if(!json.data.length){box.innerHTML='<div class="empty">No documents found</div>'; return;} box.innerHTML = json.data.map(d => '<div class="doc" onclick="openDoc(\'' + d.id + '\')"><span class="status">' + esc(d.status) + '</span><h3>' + esc(d.title) + '</h3><div class="meta">' + esc(d.countryCode || 'Global') + ' · ' + esc(d.provider || 'Any provider') + '</div><div>' + (d.tags || []).map(t => '<span class="pill">' + esc(t) + '</span>').join('') + '</div></div>').join('');}
+async function loadDocs(){const r = await fetch(api + '?' + params().toString(), {credentials:'include'}); const box = el('docs'); if(r.status===401||r.status===403){box.innerHTML='<div class="empty error">Session expired. Please <a href="/api/auth/login" style="color:#60a5fa;">log in</a> again.</div>'; return;} if(!r.ok){box.innerHTML='<div class="empty error">Failed to load documents</div>'; return;} const json = await r.json(); if(!json.data.length){box.innerHTML='<div class="empty">No documents found</div>'; return;} box.innerHTML = json.data.map(d => '<div class="doc" onclick="openDoc(\'' + d.id + '\')"><span class="status">' + esc(d.status) + '</span><h3>' + esc(d.title) + '</h3><div class="meta">' + esc(d.countryCode || 'Global') + ' · ' + esc(d.provider || 'Any provider') + '</div><div>' + (d.tags || []).map(t => '<span class="pill">' + esc(t) + '</span>').join('') + '</div></div>').join('');}
 async function openDoc(id){const r = await fetch(api + '/' + encodeURIComponent(id), {credentials:'include'}); if(!r.ok){setMessage('Document not found','error'); return;} const d = await r.json(); el('docId').value=d.id; el('title').value=d.title || ''; el('docStatus').value=d.status || 'published'; el('docCountry').value=d.countryCode || ''; el('docProvider').value=d.provider || ''; el('docTags').value=(d.tags || []).join(', '); el('sourceUrl').value=d.sourceUrl || ''; el('summary').value=d.summary || ''; el('body').value=d.body || ''; setMessage('Loaded document','');}
 async function saveDoc(){const id = el('docId').value; const payload = {title:el('title').value, status:el('docStatus').value, country:el('docCountry').value, provider:el('docProvider').value, tags:el('docTags').value, sourceUrl:el('sourceUrl').value, summary:el('summary').value, body:el('body').value}; const r = await fetch(id ? api + '/' + encodeURIComponent(id) : api, {method:id?'PATCH':'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body:JSON.stringify(payload)}); const json = await r.json().catch(()=>({})); if(!r.ok){setMessage(json.message || 'Save failed','error'); return;} setMessage('Saved','success'); el('docId').value=json.id; await loadFacets(); await loadDocs();}
 async function archiveDoc(){const id = el('docId').value; if(!id) return setMessage('Select a document first','error'); const r = await fetch(api + '/' + encodeURIComponent(id), {method:'DELETE', credentials:'include'}); if(!r.ok){setMessage('Archive failed','error'); return;} setMessage('Archived','success'); resetForm(); await loadFacets(); await loadDocs();}

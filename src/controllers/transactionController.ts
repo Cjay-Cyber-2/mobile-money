@@ -158,7 +158,260 @@ export const getTransactionHistoryHandler = async (
   }
 };
 
-export const depositHandler = async (
+export const getTransactionHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    let transaction = await transactionModel.findById(id);
+
+    if (!transaction && typeof id === "string" && id.trim()) {
+      transaction = await transactionModel.findByReferenceNumber(id.trim());
+    }
+
+    if (!transaction) {
+      throw createError(ERROR_CODES.NOT_FOUND, null, {
+        error: "Transaction not found",
+      });
+    }
+
+    let jobProgress = null;
+    if (transaction.status === TransactionStatus.Pending) {
+      jobProgress = await getJobProgress(transaction.id);
+    }
+
+    if (transaction.status === TransactionStatus.Pending) {
+      const createdAt = new Date(transaction.createdAt).getTime();
+      const now = Date.now();
+      const diffMinutes = (now - createdAt) / (1000 * 60);
+
+      if (diffMinutes > timeoutMinutes) {
+        await transactionModel.updateStatus(id, TransactionStatus.Failed);
+        transaction.status = TransactionStatus.Failed;
+
+        const body: TransactionDetailResponse = {
+          ...transaction,
+          reason: "Transaction timeout",
+          jobProgress,
+        };
+
+        return res.json(body);
+      }
+    }
+
+    const body: TransactionDetailResponse = {
+      ...transaction,
+      jobProgress,
+    };
+
+    return res.json(body);
+  } catch (err) {
+    if (err && (err as any).code) throw err;
+    logger.error("Failed to fetch transaction:", err);
+    throw createError(
+      ERROR_CODES.INTERNAL_ERROR,
+      "Failed to fetch transaction",
+      {
+        error: "Failed to fetch transaction",
+      },
+    );
+  }
+};
+
+export const cancelTransactionHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.jwtUser?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        error: "Unauthorized",
+        message: "Valid token required",
+      });
+    }
+
+    const transaction = await transactionModel.findById(id, userId);
+    if (!transaction) {
+      throw createError(ERROR_CODES.NOT_FOUND, null, {
+        error: "Transaction not found",
+      });
+    }
+
+    if (transaction.status !== TransactionStatus.Pending) {
+      throw createError(ERROR_CODES.INVALID_INPUT, null, {
+        error: `Cannot cancel transaction with status '${transaction.status}'`,
+      });
+    }
+
+    await transactionModel.updateStatus(id, TransactionStatus.Cancelled);
+    const updatedTransaction = await transactionModel.findById(id);
+
+    if (!updatedTransaction) {
+      throw createError(ERROR_CODES.INTERNAL_ERROR, null, {
+        error: "Failed to load transaction after cancel",
+      });
+    }
+
+    if (process.env.WEBHOOK_URL) {
+      try {
+        await fetch(process.env.WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event: "transaction.cancelled",
+            data: updatedTransaction,
+          }),
+        });
+      } catch (webhookError) {
+        logger.error("Webhook notification failed", webhookError);
+      }
+    }
+
+    const body: CancelTransactionResponse = {
+      message: "Transaction cancelled successfully",
+      transaction: updatedTransaction,
+    };
+
+    return res.json(body);
+  } catch (err) {
+    if (err && (err as any).code) throw err;
+    logger.error("Failed to cancel transaction:", err);
+    throw createError(ERROR_CODES.INTERNAL_ERROR, null, {
+      error: "Failed to cancel transaction",
+    });
+  }
+};
+
+export const updateNotesHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { notes } = req.body;
+
+    if (typeof notes !== "string") {
+      throw createError(ERROR_CODES.INVALID_INPUT, null, {
+        error: "Notes must be a string",
+      });
+    }
+
+    const transaction = await transactionModel.updateNotes(id, notes);
+    if (!transaction)
+      throw createError(ERROR_CODES.NOT_FOUND, null, {
+        error: "Transaction not found",
+      });
+
+    return res.json(transaction);
+  } catch (err) {
+    if (err && (err as any).code) throw err;
+    const message =
+      err instanceof Error ? err.message : "Failed to update notes";
+
+    throw createError(
+      err instanceof Error && err.message.includes("characters")
+        ? ERROR_CODES.MISSING_FIELD
+        : ERROR_CODES.INTERNAL_ERROR,
+      message,
+      {
+        error: message,
+      },
+    );
+  }
+};
+
+export const refundTransactionHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const transaction = await transactionModel.findById(id);
+    if (!transaction) {
+      throw createError(ERROR_CODES.NOT_FOUND, null, {
+        error: "Transaction not found",
+      });
+    }
+
+    if (transaction.type !== "withdraw") {
+      throw createError(ERROR_CODES.INVALID_INPUT, null, {
+        error: "Only withdrawal transactions can be refunded",
+      });
+    }
+
+    if (transaction.status !== TransactionStatus.Failed) {
+      throw createError(
+        ERROR_CODES.INVALID_INPUT,
+        `Cannot refund transaction with status '${transaction.status}'. Only failed transactions are eligible.`,
+        {
+          error: `Cannot refund transaction with status '${transaction.status}'. Only failed transactions are eligible.`,
+        },
+      );
+    }
+
+    const amount = parseFloat(transaction.amount);
+    const { calculateFee } = await import("../utils/fees.js");
+    const { fee } = await calculateFee(amount);
+    const refundAmount = parseFloat((amount - fee).toFixed(2));
+
+    if (refundAmount <= 0) {
+      throw createError(
+        ERROR_CODES.INVALID_INPUT,
+        "Refund amount after fees is zero or negative",
+        {
+          error: "Refund amount after fees is zero or negative",
+        },
+      );
+    }
+
+    await transactionModel.updateStatus(id, TransactionStatus.Completed);
+
+    return res.json({
+      message: "Refund processed successfully",
+      transactionId: id,
+      originalAmount: amount,
+      feeDeducted: fee,
+      refundAmount,
+    });
+  } catch (err) {
+    if (err && (err as any).code) throw err;
+    logger.error("Refund error:", err);
+    throw createError(ERROR_CODES.INTERNAL_ERROR, "Failed to process refund", {
+      error: "Failed to process refund",
+    });
+  }
+};
+
+export const updateAdminNotesHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { admin_notes: adminNotes } = req.body;
+
+    if (typeof adminNotes !== "string") {
+      throw createError(ERROR_CODES.INVALID_INPUT, null, {
+        error: "Admin notes must be a string",
+      });
+    }
+
+    const transaction = await transactionModel.updateAdminNotes(id, adminNotes);
+    if (!transaction) {
+      throw createError(ERROR_CODES.NOT_FOUND, "Transaction not found", {
+        error: "Transaction not found",
+      });
+    }
+
+    return res.json(transaction);
+  } catch (err) {
+    if (err && (err as any).code) throw err;
+    const message =
+      err instanceof Error ? err.message : "Failed to update admin notes";
+
+    throw createError(
+      err instanceof Error && err.message.includes("characters")
+        ? ERROR_CODES.INVALID_INPUT
+        : ERROR_CODES.INTERNAL_ERROR,
+      message,
+      {
+        error: message,
+      },
+    );
+  }
+};
+
+export const searchTransactionsHandler = async (
   req: Request,
   res: Response,
   next: NextFunction,

@@ -88,6 +88,10 @@ interface AirtelSessionState {
   authenticatedAt: number;
 }
 
+interface CaptureSessionOptions {
+  renewFallbackTtl?: boolean;
+}
+
 interface AirtelProviderConfig {
   mode?: AirtelMode;
   webBaseUrl: string;
@@ -605,11 +609,11 @@ export class AirtelService {
       );
     }
 
-    const data = response.data as {
+    const data = this.getObjectResponseData<{
       access_token?: string;
       expires_in?: number;
-    };
-    if (!data.access_token) {
+    }>(response);
+    if (!data?.access_token) {
       throw new Error("Airtel direct auth did not return access_token");
     }
 
@@ -745,7 +749,14 @@ export class AirtelService {
       return { success: false, error: response.data };
     }
 
-    const data = response.data as AirtelBalanceResponse;
+    const data = this.getObjectResponseData<AirtelBalanceResponse>(response);
+    if (!data) {
+      return {
+        success: false,
+        error: new Error("Airtel balance response body was empty"),
+      };
+    }
+
     const rawBalance =
       data.data?.availableBalance ??
       data.data?.balance ??
@@ -840,8 +851,11 @@ export class AirtelService {
       );
     }
 
-    const session = this.captureSession(loginResponse, initialSession);
+    const session = this.captureSession(loginResponse, initialSession, {
+      renewFallbackTtl: true,
+    });
     session.csrfToken = this.extractCsrfToken(loginResponse) ?? csrfToken;
+    session.authenticatedAt = this.clock();
     this.session = this.ensureExpiresAt(session);
     this.persistSession(this.session);
 
@@ -867,8 +881,9 @@ export class AirtelService {
         throw new Error(`Airtel refresh failed with status ${response.status}`);
       }
 
-      this.captureSession(response, session);
+      this.captureSession(response, session, { renewFallbackTtl: true });
       session.csrfToken = this.extractCsrfToken(response) ?? session.csrfToken;
+      session.authenticatedAt = this.clock();
       this.session = this.ensureExpiresAt(session);
       this.persistSession(this.session);
 
@@ -1016,7 +1031,14 @@ export class AirtelService {
       return { success: false, error: response.data };
     }
 
-    const data = response.data as AirtelBalanceResponse;
+    const data = this.getObjectResponseData<AirtelBalanceResponse>(response);
+    if (!data) {
+      return {
+        success: false,
+        error: new Error("Airtel balance response body was empty"),
+      };
+    }
+
     const rawBalance =
       data.data?.availableBalance ??
       data.data?.balance ??
@@ -1146,7 +1168,14 @@ export class AirtelService {
       return { success: false, error: response.data };
     }
 
-    const data = response.data as AirtelBalanceResponse;
+    const data = this.getObjectResponseData<AirtelBalanceResponse>(response);
+    if (!data) {
+      return {
+        success: false,
+        error: new Error("Airtel balance response body was empty"),
+      };
+    }
+
     const rawBalance =
       data.data?.availableBalance ??
       data.data?.balance ??
@@ -1211,15 +1240,31 @@ export class AirtelService {
     throw new Error(`Airtel HTTP client does not support ${method}`);
   }
 
+  private getObjectResponseData<T extends object>(
+    response: AxiosResponse,
+  ): T | null {
+    if (!response.data || typeof response.data !== "object") {
+      return null;
+    }
+
+    return response.data as T;
+  }
+
   private captureSession(
     response: AxiosResponse,
     existing?: AirtelSessionState,
+    options: CaptureSessionOptions = {},
   ): AirtelSessionState {
     const session: AirtelSessionState = existing ?? {
       cookies: {},
       expiresAt: this.clock() + this.config.sessionTtlMs,
       authenticatedAt: this.clock(),
     };
+
+    const fallbackExpiry =
+      options.renewFallbackTtl || !session.expiresAt
+        ? this.clock() + this.config.sessionTtlMs
+        : session.expiresAt;
 
     for (const cookie of this.getSetCookieHeaders(response)) {
       const parsed = this.parseSetCookie(cookie);
@@ -1233,9 +1278,7 @@ export class AirtelService {
 
     session.csrfToken = this.extractCsrfToken(response) ?? session.csrfToken;
     session.expiresAt =
-      this.getEarliestCookieExpiry(session) ??
-      session.expiresAt ??
-      this.clock() + this.config.sessionTtlMs;
+      this.getEarliestCookieExpiry(session) ?? fallbackExpiry;
 
     return session;
   }

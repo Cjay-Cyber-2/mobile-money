@@ -19,6 +19,7 @@
     "provider-mock:dev": "tsx scripts/provider-mock-server.ts",
     "horizon-mock:dev": "tsx scripts/horizon-mock-server.ts",
     "build": "tsc",
+    "portal:dev": "cd developer-portal && npx mintlify dev",
     "check-cert": "tsx scripts/cert_check.ts",
     "start": "node dist/src/index.js",
     "lint": "eslint src",
