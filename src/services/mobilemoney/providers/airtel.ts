@@ -609,11 +609,11 @@ export class AirtelService {
       );
     }
 
-    const data = response.data as {
+    const data = this.getObjectResponseData<{
       access_token?: string;
       expires_in?: number;
-    };
-    if (!data.access_token) {
+    }>(response);
+    if (!data?.access_token) {
       throw new Error("Airtel direct auth did not return access_token");
     }
 
@@ -749,7 +749,14 @@ export class AirtelService {
       return { success: false, error: response.data };
     }
 
-    const data = response.data as AirtelBalanceResponse;
+    const data = this.getObjectResponseData<AirtelBalanceResponse>(response);
+    if (!data) {
+      return {
+        success: false,
+        error: new Error("Airtel balance response body was empty"),
+      };
+    }
+
     const rawBalance =
       data.data?.availableBalance ??
       data.data?.balance ??
@@ -1024,7 +1031,14 @@ export class AirtelService {
       return { success: false, error: response.data };
     }
 
-    const data = response.data as AirtelBalanceResponse;
+    const data = this.getObjectResponseData<AirtelBalanceResponse>(response);
+    if (!data) {
+      return {
+        success: false,
+        error: new Error("Airtel balance response body was empty"),
+      };
+    }
+
     const rawBalance =
       data.data?.availableBalance ??
       data.data?.balance ??
@@ -1154,7 +1168,14 @@ export class AirtelService {
       return { success: false, error: response.data };
     }
 
-    const data = response.data as AirtelBalanceResponse;
+    const data = this.getObjectResponseData<AirtelBalanceResponse>(response);
+    if (!data) {
+      return {
+        success: false,
+        error: new Error("Airtel balance response body was empty"),
+      };
+    }
+
     const rawBalance =
       data.data?.availableBalance ??
       data.data?.balance ??
@@ -1217,6 +1238,16 @@ export class AirtelService {
     }
 
     throw new Error(`Airtel HTTP client does not support ${method}`);
+  }
+
+  private getObjectResponseData<T extends object>(
+    response: AxiosResponse,
+  ): T | null {
+    if (!response.data || typeof response.data !== "object") {
+      return null;
+    }
+
+    return response.data as T;
   }
 
   private captureSession(
